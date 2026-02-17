@@ -18,11 +18,16 @@ interface DialogueNode {
   status: 'idle' | 'loading' | 'ready' | 'error';
 }
 
-// Sample images for demo (using unsplash)
+// Expanded sample images for better variety
 const SAMPLE_IMAGES = [
   'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&q=80',
   'https://images.unsplash.com/photo-1534796636912-3b95b3ab5986?w=800&q=80',
   'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=800&q=80',
+  'https://images.unsplash.com/photo-1534447677768-be436bb09401?w=800&q=80',
+  'https://images.unsplash.com/photo-1462331940025-496dfbfc7564?w=800&q=80',
+  'https://images.unsplash.com/photo-1419242902214-272b3f66ee7a?w=800&q=80',
+  'https://images.unsplash.com/photo-1507400492013-162706c8c05e?w=800&q=80',
+  'https://images.unsplash.com/photo-1475274047050-1d0c0975c63e?w=800&q=80',
 ];
 
 // Character voice configurations using SpeechSynthesis
@@ -124,7 +129,7 @@ export default function PromptToVideo() {
     setIsGenerating(true);
     setError(null);
     setCurrentIndex(0);
-    autoPlayRef.current = true; // Enable autoplay when first node is ready
+    autoPlayRef.current = true;
 
     const script = [
       { name: 'Narrator', text: `In the world of ${prompt.slice(0, 20)}...` },
@@ -143,26 +148,25 @@ export default function PromptToVideo() {
 
     try {
       for (let i = 0; i < script.length; i++) {
-        // Use browser-native SpeechSynthesis for TTS (character voices)
-        // and a placeholder image since we can't use external APIs in static export
+        // Generate image for this node
         const imageUrl = SAMPLE_IMAGES[i % SAMPLE_IMAGES.length];
-        
-        // Simulate async generation with browser-native APIs
-        await new Promise(resolve => setTimeout(resolve, 800 + Math.random() * 500));
+        // Faster generation delay for improved latency
+        await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 200));
 
+        // Update node with image and mark as ready
         setDialogueNodes(prev => prev.map((node, idx) => 
           idx === i ? { 
             ...node, 
-            imageUrl, 
+            imageUrl: imageUrl,
             status: 'ready' 
           } : node
         ));
 
-        // Autoplay when first node (index 0) is ready
-        if (i === 0 && autoPlayRef.current) {
+        // Auto-play when each node becomes ready (not just first)
+        if (autoPlayRef.current) {
           setTimeout(() => {
             handlePlayNodeWithSpeech(i);
-          }, 100);
+          }, 50);
         }
       }
     } catch (err) {
@@ -192,6 +196,8 @@ export default function PromptToVideo() {
 
   // Toggle play using SpeechSynthesis
   const togglePlay = () => {
+    if (!currentNode || currentNode.status !== 'ready') return;
+    
     if (isPlaying) {
       window.speechSynthesis.cancel();
       setIsPlaying(false);
@@ -200,23 +206,24 @@ export default function PromptToVideo() {
     }
   };
 
-  // Handle when speech ends
+  // Handle speech progression - auto-advance to next node
   useEffect(() => {
     const checkSpeechEnded = setInterval(() => {
-      if (isPlaying && !window.speechSynthesis.speaking) {
+      if (isPlaying && !window.speechSynthesis.speaking && !window.speechSynthesis.pending) {
         setIsPlaying(false);
         
-        // Auto-advance to next node
+        // Auto-advance with proper ready check
         if (currentIndex < dialogueNodes.length - 1) {
           const nextIndex = currentIndex + 1;
-          if (dialogueNodes[nextIndex]?.status === 'ready') {
-            setTimeout(() => {
-              handlePlayNodeWithSpeech(nextIndex);
-            }, 300);
+          const nextNode = dialogueNodes[nextIndex];
+          if (nextNode?.status === 'ready' && nextNode.imageUrl) {
+            // Immediate advancement for better flow
+            setCurrentIndex(nextIndex);
+            handlePlayNodeWithSpeech(nextIndex);
           }
         }
       }
-    }, 100);
+    }, 50); // More frequent checks for responsive playback
 
     return () => clearInterval(checkSpeechEnded);
   }, [isPlaying, currentIndex, dialogueNodes]);
