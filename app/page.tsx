@@ -2,10 +2,10 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
+import {
   Play, Pause, Wand2, Volume2, Image as ImageIcon,
   Loader2, Sparkles, ChevronLeft, ChevronRight,
-  VolumeX, Info
+  VolumeX, Info, RotateCcw
 } from 'lucide-react';
 import { clsx } from 'clsx';
 
@@ -17,6 +17,17 @@ interface DialogueNode {
   audioUrl?: string;
   status: 'idle' | 'loading' | 'ready' | 'error';
 }
+
+// Cloudflare Workers AI configuration
+const CLOUDFLARE_ACCOUNT_ID = process.env.NEXT_PUBLIC_CLOUDFLARE_ACCOUNT_ID || '';
+const CLOUDFLARE_API_TOKEN = process.env.NEXT_PUBLIC_CLOUDFLARE_API_TOKEN || '';
+
+// Cloudflare TTS model - using @cf/meta/baai-benchmark-ccjk-for-tts for natural voice
+const TTS_MODEL = '@cf/meta/baai-benchmark-ccjk-for-tts';
+const TTS_VOICE = 'af_sarah';
+
+// Cloudflare Image Generation model
+const IMAGE_MODEL = '@cf/stabilityai/stable-diffusion-xl-turbo-1.0';
 
 // Expanded sample images for better variety
 const SAMPLE_IMAGES = [
@@ -30,12 +41,12 @@ const SAMPLE_IMAGES = [
   'https://images.unsplash.com/photo-1475274047050-1d0c0975c63e?w=800&q=80',
 ];
 
-// Character voice configurations using SpeechSynthesis
-const CHARACTER_VOICES: Record<string, { rate: number; pitch: number; voiceIndex: number }> = {
-  'Narrator': { rate: 0.9, pitch: 1.0, voiceIndex: 0 },
-  'Hero': { rate: 1.0, pitch: 0.9, voiceIndex: 1 },
-  'Sage': { rate: 0.85, pitch: 1.1, voiceIndex: 2 },
-  'Default': { rate: 1.0, pitch: 1.0, voiceIndex: 0 },
+// Character voice configurations for Cloudflare TTS
+const CHARACTER_VOICES: Record<string, { voice: string; speed: number }> = {
+  'Narrator': { voice: 'af_sarah', speed: 1.0 },
+  'Hero': { voice: 'am_michael', speed: 1.0 },
+  'Sage': { voice: 'af_zoe', speed: 0.9 },
+  'Default': { voice: 'af_sarah', speed: 1.0 },
 };
 
 export default function PromptToVideo() {
@@ -47,10 +58,11 @@ export default function PromptToVideo() {
   const [isMuted, setIsMuted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
-  
+
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const speechRef = useRef<SpeechSynthesisUtterance | null>(null);
   const autoPlayRef = useRef<boolean>(false);
+  const isPlayingRef = useRef<boolean>(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // Load available voices
   useEffect(() => {
@@ -78,86 +90,233 @@ export default function PromptToVideo() {
     };
   }, [dialogueNodes]);
 
-  // Get character voice settings
-  const getVoiceConfig = (characterName: string) => {
-    return CHARACTER_VOICES[characterName] || CHARACTER_VOICES['Default'];
-  };
-
   // Toggle mute functionality
   const toggleMute = useCallback(() => {
     setIsMuted(prev => {
       const newMuted = !prev;
       if (newMuted) {
-        window.speechSynthesis.cancel();
+        if (audioRef.current) {
+          audioRef.current.pause();
+        }
         setIsPlaying(false);
+        isPlayingRef.current = false;
       }
       return newMuted;
     });
   }, []);
 
-  // Speak text using character voice (not narrator voice for characters)
-  const speakText = useCallback((text: string, characterName: string): Promise<void> => {
-    if (isMuted) return Promise.resolve();
-    
+  // Get character voice settings
+  const getVoiceConfig = (characterName: string) => {
+    return CHARACTER_VOICES[characterName] || CHARACTER_VOICES['Default'];
+  };
+
+  // Call Cloudflare Workers AI for text-to-speech
+  const generateSpeech = async (text: string, voiceConfig: { voice: string; speed: number }): Promise<ArrayBuffer> => {
+    if (!CLOUDFLARE_ACCOUNT_ID || !CLOUDFLARE_API_TOKEN) {
+      // Fallback to browser TTS if no Cloudflare credentials
+      return Promise.reject(new Error('No Cloudflare credentials'));
+    }
+
+    const response = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/ai/run/${TTS_MODEL}`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${CLOUDFLARE_API_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          input_text: text,
+          voice: voiceConfig.voice,
+          speed: voiceConfig.speed,
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`TTS API error: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    // Cloudflare returns base64 audio data
+    const audioBase64 = data.result.audio;
+    // Convert base64 to ArrayBuffer
+    const binaryString = atob(audioBase64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes.buffer;
+  };
+
+  // Speak text using browser SpeechSynthesis as fallback
+  const speakWithBrowserTTS = useCallback((text: string, characterName: string): Promise<void> => {
     return new Promise((resolve, reject) => {
+      if (isMuted) {
+        resolve();
+        return;
+      }
+
+      // Cancel any ongoing speech
       window.speechSynthesis.cancel();
 
       const utterance = new SpeechSynthesisUtterance(text);
       const config = getVoiceConfig(characterName);
-      
-      // Get appropriate voice - prefer different voices for different characters
-      const voices = availableVoices.length > 0 ? availableVoices : window.speechSynthesis.getVoices();
-      
-      // Select voice based on character - use different voices for characters vs narrator
-      if (characterName !== 'Narrator' && voices.length > 1) {
-        // For characters, use a more expressive voice (typically different from default)
-        const charVoiceIndex = Math.min(config.voiceIndex, voices.length - 1);
-        utterance.voice = voices[charVoiceIndex] || voices[0];
-        utterance.pitch = config.pitch;
-        utterance.rate = config.rate;
-      } else {
-        // For narrator, use the default/first voice
-        utterance.voice = voices[0] || null;
-        utterance.rate = config.rate;
-        utterance.pitch = config.pitch;
-      }
 
+      // Try to find a matching voice
+      const voices = availableVoices;
+      const matchingVoice = voices.find(v => 
+        v.name.toLowerCase().includes(config.voice.split('_')[1]?.toLowerCase() || '')
+      );
+      
+      if (matchingVoice) {
+        utterance.voice = matchingVoice;
+      }
+      
+      utterance.rate = config.speed;
       utterance.onend = () => resolve();
       utterance.onerror = (e) => reject(e);
 
-      speechRef.current = utterance;
       window.speechSynthesis.speak(utterance);
     });
-  }, [availableVoices, isMuted]);
+  }, [isMuted, availableVoices]);
+
+  // Speak text using Cloudflare TTS with fallback
+  const speakText = useCallback(async (text: string, characterName: string): Promise<void> => {
+    if (isMuted) return;
+
+    const config = getVoiceConfig(characterName);
+
+    try {
+      const audioData = await generateSpeech(text, config);
+
+      if (audioRef.current) {
+        const blob = new Blob([audioData], { type: 'audio/wav' });
+        const url = URL.createObjectURL(blob);
+        audioRef.current.src = url;
+        
+        await new Promise<void>((resolve, reject) => {
+          if (!audioRef.current) {
+            resolve();
+            return;
+          }
+          
+          audioRef.current.onended = () => {
+            URL.revokeObjectURL(url);
+            resolve();
+          };
+          audioRef.current.onerror = () => {
+            URL.revokeObjectURL(url);
+            reject(new Error('Audio playback failed'));
+          };
+          audioRef.current.play().catch(reject);
+        });
+      }
+    } catch (err) {
+      console.warn('Cloudflare TTS failed, using browser TTS:', err);
+      // Fallback to browser TTS
+      await speakWithBrowserTTS(text, characterName);
+    }
+  }, [isMuted, speakWithBrowserTTS]);
+
+  // Stop playback
+  const stopPlayback = useCallback(() => {
+    isPlayingRef.current = false;
+    setIsPlaying(false);
+    window.speechSynthesis.cancel();
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
+  }, []);
+
+  // Play node with speech
+  const handlePlayNodeWithSpeech = useCallback(async (index: number) => {
+    const nodes = dialogueNodes;
+    const node = nodes[index];
+    
+    if (!node || node.status !== 'ready') return;
+
+    isPlayingRef.current = true;
+    setIsPlaying(true);
+    setCurrentIndex(index);
+
+    try {
+      await speakText(node.text, node.characterName);
+      
+      // Auto-advance to next node if still playing
+      if (isPlayingRef.current && index < nodes.length - 1) {
+        setTimeout(() => {
+          if (isPlayingRef.current) {
+            handlePlayNodeWithSpeech(index + 1);
+          }
+        }, 500);
+      } else {
+        isPlayingRef.current = false;
+        setIsPlaying(false);
+      }
+    } catch (err) {
+      console.error('Playback error:', err);
+      isPlayingRef.current = false;
+      setIsPlaying(false);
+    }
+  }, [dialogueNodes, speakText]);
+
+  // Play all nodes sequentially
+  const handlePlayAll = useCallback(() => {
+    if (dialogueNodes.length === 0) return;
+    
+    if (isPlayingRef.current) {
+      // Stop playing
+      stopPlayback();
+    } else {
+      // Start playing from current index
+      handlePlayNodeWithSpeech(currentIndex);
+    }
+  }, [dialogueNodes.length, currentIndex, handlePlayNodeWithSpeech, stopPlayback]);
+
+  // Navigate to previous node
+  const handlePrev = useCallback(() => {
+    if (currentIndex > 0) {
+      stopPlayback();
+      setCurrentIndex(prev => prev - 1);
+    }
+  }, [currentIndex, stopPlayback]);
+
+  // Navigate to next node
+  const handleNext = useCallback(() => {
+    if (currentIndex < dialogueNodes.length - 1) {
+      stopPlayback();
+      setCurrentIndex(prev => prev + 1);
+    }
+  }, [currentIndex, dialogueNodes.length, stopPlayback]);
 
   const handleGenerate = async () => {
     if (!prompt.trim() || isGenerating) return;
 
     // Stop any current playback
-    window.speechSynthesis.cancel();
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.src = '';
-    }
-    setIsPlaying(false);
+    stopPlayback();
+    
     setIsGenerating(true);
     setError(null);
     setCurrentIndex(0);
     autoPlayRef.current = true;
 
+    // Use the actual prompt in the generated story
+    const userPrompt = prompt.trim();
     const script = [
-      { name: 'Narrator', text: `In the world of ${prompt.slice(0, 20)}...` },
-      { name: 'Hero', text: "I must face the challenge ahead of me." },
-      { name: 'Sage', text: "Wisdom is your greatest weapon, seeker." }
+      { name: 'Narrator', text: `In the world of ${userPrompt}...` },
+      { name: 'Hero', text: `I must face the challenge ahead of me in the land of ${userPrompt}.` },
+      { name: 'Sage', text: `Wisdom is your greatest weapon, seeker of ${userPrompt}.` }
     ];
 
     const initialNodes: DialogueNode[] = script.map((s, i) => ({
       id: `node-${i}-${Date.now()}`,
       characterName: s.name,
       text: s.text,
-      status: 'loading'
+      status: 'loading' as const
     }));
-    
+
     setDialogueNodes(initialNodes);
 
     try {
@@ -180,8 +339,7 @@ export default function PromptToVideo() {
       }));
 
       // Auto-play after all nodes are ready
-      if (autoPlayRef.current && dialogueNodes.length > 0) {
-        // Small delay to ensure state is updated, then play first node
+      if (autoPlayRef.current) {
         setTimeout(() => {
           handlePlayNodeWithSpeech(0);
         }, 150);
@@ -195,277 +353,209 @@ export default function PromptToVideo() {
     }
   };
 
-  // Play node with SpeechSynthesis (character voices)
-  const handlePlayNodeWithSpeech = async (index: number) => {
-    const node = dialogueNodes[index];
-    if (!node || node.status !== 'ready') return;
-
-    // Don't start playing if muted
-    if (isMuted) {
-      setIsPlaying(true);
-      setCurrentIndex(index);
-      return;
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && prompt.trim() && !isGenerating) {
+      handleGenerate();
     }
-
-    setIsPlaying(true);
-    setCurrentIndex(index);
-
-    try {
-      await speakText(node.text, node.characterName);
-    } catch (err) {
-      console.error('Speech error:', err);
-      setIsPlaying(false);
-    }
-  };
-
-  // Toggle play using SpeechSynthesis
-  const togglePlay = () => {
-    if (!currentNode || currentNode.status !== 'ready') return;
-    
-    if (isPlaying) {
-      window.speechSynthesis.cancel();
-      setIsPlaying(false);
-    } else {
-      handlePlayNodeWithSpeech(currentIndex);
-    }
-  };
-
-  // Handle speech progression - auto-advance to next node
-  useEffect(() => {
-    const checkSpeechEnded = setInterval(() => {
-      if (isPlaying && !window.speechSynthesis.speaking && !window.speechSynthesis.pending) {
-        setIsPlaying(false);
-        
-        // Auto-advance with proper ready check
-        if (currentIndex < dialogueNodes.length - 1) {
-          const nextIndex = currentIndex + 1;
-          const nextNode = dialogueNodes[nextIndex];
-          if (nextNode?.status === 'ready' && nextNode.imageUrl) {
-            // Immediate advancement for better flow
-            setCurrentIndex(nextIndex);
-            handlePlayNodeWithSpeech(nextIndex);
-          }
-        }
-      }
-    }, 50); // More frequent checks for responsive playback
-
-    return () => clearInterval(checkSpeechEnded);
-  }, [isPlaying, currentIndex, dialogueNodes, isMuted]);
-
-  const playNode = (index: number) => {
-    handlePlayNodeWithSpeech(index);
   };
 
   const currentNode = dialogueNodes[currentIndex];
+  const canNavigatePrev = currentIndex > 0;
+  const canNavigateNext = currentIndex < dialogueNodes.length - 1;
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col p-4 md:p-8">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
       <audio ref={audioRef} className="hidden" />
-
-      <div className="max-w-5xl mx-auto w-full space-y-8">
-        <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="flex items-center gap-3">
-            <div className="bg-purple-600 p-2 rounded-xl">
-              <Sparkles className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">Visionary AI</h1>
-              <p className="text-neutral-500 text-sm">Prompt to Cinematic Scene</p>
-            </div>
+      
+      {/* Header */}
+      <header className="border-b border-white/10 bg-black/20 backdrop-blur-sm">
+        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-6 h-6 text-purple-400" />
+            <h1 className="text-xl font-bold text-white">Story Generator</h1>
           </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={toggleMute}
+              className="p-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors"
+              aria-label={isMuted ? 'Unmute' : 'Mute'}
+            >
+              {isMuted ? <VolumeX className="w-5 h-5 text-white" /> : <Volume2 className="w-5 h-5 text-white" />}
+            </button>
+          </div>
+        </div>
+      </header>
 
-          <div className="flex flex-col sm:flex-row gap-3">
-            <input 
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder="A futuristic cyber-city at dusk..."
-              className="bg-neutral-900 border border-neutral-800 px-4 py-2.5 rounded-xl w-full sm:w-72 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all"
-            />
+      {/* Main Content */}
+      <main className="max-w-7xl mx-auto px-4 py-8">
+        {/* Input Section */}
+        <div className="mb-8">
+          <div className="flex gap-3">
+            <div className="flex-1 relative">
+              <input
+                ref={inputRef}
+                type="text"
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Enter your story prompt..."
+                className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                disabled={isGenerating}
+              />
+              {isGenerating && (
+                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                  <Loader2 className="w-5 h-5 text-purple-400 animate-spin" />
+                </div>
+              )}
+            </div>
             <button
               onClick={handleGenerate}
-              disabled={isGenerating || !prompt.trim()}
-              className="bg-purple-600 hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white px-6 py-2.5 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all shadow-lg shadow-purple-900/20"
+              disabled={!prompt.trim() || isGenerating}
+              className={clsx(
+                "px-6 py-3 rounded-xl font-semibold flex items-center gap-2 transition-all",
+                prompt.trim() && !isGenerating
+                  ? "bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white shadow-lg shadow-purple-500/25"
+                  : "bg-white/10 text-white/50 cursor-not-allowed"
+              )}
             >
-              {isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
+              <Wand2 className="w-5 h-5" />
               Generate
             </button>
           </div>
-        </header>
+        </div>
 
+        {/* Error Message */}
         {error && (
-          <motion.div 
-            initial={{ opacity: 0, y: -10 }} 
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-red-500/10 border border-red-500/20 text-red-400 p-4 rounded-xl flex items-center gap-3"
-          >
-            <Info className="w-5 h-5 flex-shrink-0" />
-            <p className="text-sm">{error}</p>
-          </motion.div>
+          <div className="mb-6 p-4 bg-red-500/20 border border-red-500/50 rounded-xl text-red-200 flex items-center gap-2">
+            <Info className="w-5 h-5" />
+            {error}
+          </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          <div className="lg:col-span-8 space-y-6">
-            <div className="relative aspect-video rounded-3xl overflow-hidden bg-neutral-900 border border-neutral-800 shadow-2xl">
-              <AnimatePresence mode="wait">
-                {currentNode?.imageUrl ? (
-                  <motion.img
-                    key={currentNode.imageUrl}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
+        {/* Story Display */}
+        {dialogueNodes.length > 0 && currentNode && (
+          <div className="space-y-6">
+            {/* Navigation */}
+            <div className="flex items-center justify-between">
+              <button
+                onClick={handlePrev}
+                disabled={!canNavigatePrev}
+                className={clsx(
+                  "p-2 rounded-lg transition-colors",
+                  canNavigatePrev ? "bg-white/10 hover:bg-white/20 text-white" : "bg-white/5 text-white/30 cursor-not-allowed"
+                )}
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+              
+              <div className="text-white/60 text-sm">
+                {currentIndex + 1} / {dialogueNodes.length}
+              </div>
+              
+              <button
+                onClick={handleNext}
+                disabled={!canNavigateNext}
+                className={clsx(
+                  "p-2 rounded-lg transition-colors",
+                  canNavigateNext ? "bg-white/10 hover:bg-white/20 text-white" : "bg-white/5 text-white/30 cursor-not-allowed"
+                )}
+              >
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Story Card */}
+            <motion.div
+              key={currentNode.id}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-black/30 backdrop-blur-sm rounded-2xl overflow-hidden border border-white/10"
+            >
+              {/* Image */}
+              <div className="relative aspect-video bg-gradient-to-br from-purple-900/50 to-pink-900/50">
+                {currentNode.imageUrl ? (
+                  <img
                     src={currentNode.imageUrl}
-                    alt="Scene"
+                    alt={`Scene for ${currentNode.characterName}`}
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <div className="w-full h-full flex flex-col items-center justify-center gap-4 text-neutral-600">
-                    {isGenerating ? <Loader2 className="w-10 h-10 animate-spin" /> : <ImageIcon className="w-12 h-12" />}
-                    <p className="text-sm font-medium">{isGenerating ? 'Synthesizing scene...' : 'No scene generated'}</p>
+                  <div className="w-full h-full flex items-center justify-center">
+                    <ImageIcon className="w-16 h-16 text-white/30" />
                   </div>
                 )}
-              </AnimatePresence>
-
-              {/* Overlay Content */}
-              {currentNode && (
-                <div className="absolute inset-0 flex flex-col justify-end p-6 md:p-10 bg-gradient-to-t from-black/90 via-black/20 to-transparent">
-                  <motion.div
-                    key={currentIndex}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="space-y-3"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="bg-purple-600/90 text-white text-xs font-bold px-2.5 py-1 rounded-lg">
-                        {currentNode.characterName}
-                      </span>
-                      {currentNode.status === 'loading' && (
-                        <Loader2 className="w-4 h-4 animate-spin text-purple-400" />
-                      )}
-                    </div>
-                    <p className="text-lg md:text-xl font-medium text-white leading-relaxed drop-shadow-lg">
-                      {currentNode.text}
-                    </p>
-                  </motion.div>
+                
+                {/* Character Badge */}
+                <div className="absolute top-4 left-4 px-3 py-1 bg-purple-500/80 backdrop-blur-sm rounded-full">
+                  <span className="text-white font-medium">{currentNode.characterName}</span>
                 </div>
-              )}
 
-              {/* Controls Overlay */}
-              {dialogueNodes.length > 0 && (
-                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2">
+                {/* Loading Overlay */}
+                {currentNode.status === 'loading' && (
+                  <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                    <Loader2 className="w-8 h-8 text-white animate-spin" />
+                  </div>
+                )}
+              </div>
+
+              {/* Dialogue Text */}
+              <div className="p-6">
+                <p className="text-lg text-white/90 leading-relaxed mb-6">
+                  {currentNode.text}
+                </p>
+
+                {/* Controls */}
+                <div className="flex items-center justify-between">
                   <button
-                    onClick={() => setCurrentIndex(prev => Math.max(0, prev - 1))}
-                    disabled={currentIndex === 0}
-                    className="bg-black/60 hover:bg-black/80 disabled:opacity-30 disabled:cursor-not-allowed p-2.5 rounded-full backdrop-blur-sm transition-all"
-                    aria-label="Previous"
+                    onClick={handleGenerate}
+                    disabled={isGenerating}
+                    className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors"
+                    aria-label="Regenerate story"
                   >
-                    <ChevronLeft className="w-5 h-5" />
+                    <RotateCcw className="w-5 h-5" />
                   </button>
                   
                   <button
-                    onClick={togglePlay}
-                    disabled={!currentNode || currentNode.status !== 'ready'}
-                    className="bg-purple-600 hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed p-3.5 rounded-full backdrop-blur-sm transition-all shadow-lg"
-                    aria-label={isPlaying ? 'Pause' : 'Play'}
+                    onClick={handlePlayAll}
+                    disabled={currentNode.status !== 'ready'}
+                    className={clsx(
+                      "px-6 py-2 rounded-xl font-semibold flex items-center gap-2 transition-all",
+                      currentNode.status === 'ready'
+                        ? isPlaying 
+                          ? "bg-red-500 hover:bg-red-600 text-white"
+                          : "bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white"
+                        : "bg-white/10 text-white/50 cursor-not-allowed"
+                    )}
                   >
                     {isPlaying ? (
-                      <Pause className="w-6 h-6 text-white" />
+                      <>
+                        <Pause className="w-5 h-5" />
+                        Stop
+                      </>
                     ) : (
-                      <Play className="w-6 h-6 text-white" />
+                      <>
+                        <Play className="w-5 h-5" />
+                        Play
+                      </>
                     )}
-                  </button>
-                  
-                  <button
-                    onClick={toggleMute}
-                    className="bg-black/60 hover:bg-black/80 p-2.5 rounded-full backdrop-blur-sm transition-all"
-                    aria-label={isMuted ? 'Unmute' : 'Mute'}
-                  >
-                    {isMuted ? (
-                      <VolumeX className="w-5 h-5 text-white" />
-                    ) : (
-                      <Volume2 className="w-5 h-5 text-white" />
-                    )}
-                  </button>
-
-                  <button
-                    onClick={() => setCurrentIndex(prev => Math.min(dialogueNodes.length - 1, prev + 1))}
-                    disabled={currentIndex === dialogueNodes.length - 1}
-                    className="bg-black/60 hover:bg-black/80 disabled:opacity-30 disabled:cursor-not-allowed p-2.5 rounded-full backdrop-blur-sm transition-all"
-                    aria-label="Next"
-                  >
-                    <ChevronRight className="w-5 h-5" />
                   </button>
                 </div>
-              )}
-            </div>
-
-            {/* Node Indicators */}
-            {dialogueNodes.length > 1 && (
-              <div className="flex items-center justify-center gap-2">
-                {dialogueNodes.map((node, idx) => (
-                  <button
-                    key={node.id}
-                    onClick={() => playNode(idx)}
-                    disabled={node.status !== 'ready'}
-                    className={clsx(
-                      "w-2.5 h-2.5 rounded-full transition-all",
-                      idx === currentIndex 
-                        ? "bg-purple-500 scale-125" 
-                        : node.status === 'ready'
-                          ? "bg-neutral-600 hover:bg-neutral-500"
-                          : "bg-neutral-800"
-                    )}
-                    aria-label={`Go to scene ${idx + 1}`}
-                  />
-                ))}
               </div>
-            )}
+            </motion.div>
           </div>
+        )}
 
-          {/* Sidebar */}
-          <div className="lg:col-span-4 space-y-4">
-            <h2 className="text-lg font-semibold">Story Nodes</h2>
-            <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2">
-              {dialogueNodes.length === 0 ? (
-                <div className="text-neutral-500 text-sm py-8 text-center">
-                  Generate a story to see dialogue nodes
-                </div>
-              ) : (
-                dialogueNodes.map((node, idx) => (
-                  <motion.button
-                    key={node.id}
-                    onClick={() => playNode(idx)}
-                    disabled={node.status !== 'ready'}
-                    initial={{ opacity: 0, x: 20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: idx * 0.1 }}
-                    className={clsx(
-                      "w-full text-left p-4 rounded-xl border transition-all",
-                      idx === currentIndex
-                        ? "bg-purple-600/20 border-purple-500/50"
-                        : node.status === 'ready'
-                          ? "bg-neutral-900 border-neutral-800 hover:border-neutral-700"
-                          : "bg-neutral-900/50 border-neutral-800/50 opacity-50"
-                    )}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <span className={clsx(
-                        "text-xs font-bold px-2 py-0.5 rounded",
-                        node.characterName === 'Narrator' && "bg-blue-600/20 text-blue-400",
-                        node.characterName === 'Hero' && "bg-red-600/20 text-red-400",
-                        node.characterName === 'Sage' && "bg-green-600/20 text-green-400"
-                      )}>
-                        {node.characterName}
-                      </span>
-                      {node.status === 'loading' && <Loader2 className="w-3 h-3 animate-spin text-neutral-500" />}
-                    </div>
-                    <p className="text-sm text-neutral-300 line-clamp-2">{node.text}</p>
-                  </motion.button>
-                ))
-              )}
+        {/* Empty State */}
+        {dialogueNodes.length === 0 && !isGenerating && (
+          <div className="text-center py-16">
+            <div className="w-24 h-24 mx-auto mb-6 rounded-full bg-white/10 flex items-center justify-center">
+              <Sparkles className="w-12 h-12 text-purple-400" />
             </div>
+            <h2 className="text-2xl font-bold text-white mb-2">Create Your Story</h2>
+            <p className="text-white/60">Enter a prompt above to generate an interactive story</p>
           </div>
-        </div>
-      </div>
+        )}
+      </main>
     </div>
   );
 }
