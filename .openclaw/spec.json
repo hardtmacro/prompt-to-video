@@ -1,0 +1,14 @@
+{
+  "project_name": "prompt-to-video",
+  "description": "Say the character lines in their own voice. Not the narrator voice. Remove\r\ncharacters section from the UI they are already shown on the nodes.\r\nAutoplay as soon as first node is ready.\r\nTest image an",
+  "features": [],
+  "is_update": false,
+  "existing_project": null,
+  "design_notes": "",
+  "has_dynamic_features": false,
+  "stack_tags": [
+    "nextjs",
+    "tailwind",
+    "typescript"
+  ]
+}

@@ -1,0 +1,14 @@
+@@ -56,10 +56,9 @@
+     setDialogueNodes(initialNodes);
+ 
+     try {
+-      for (let i = 0; i < script.length; i++) {
+-        const [imgRes, voiceRes] = await Promise.all([
+-          fetch('/api/generate-image', {
++      for (let i = 0; i < script.length; i++) {
++        const imgRes = await fetch('https://api.cloudflare.com/client/v4/accounts/' + process.env.NEXT_PUBLIC_CF_ACCOUNT_ID + '/ai/run/@cf/stabilityai/stable-diffusion-xl-base-1.0', {
+             method: 'POST',
+             headers: { 
+               'Content-Type': 'application/json',
+-              'Authorization': `Bearer ${process.env.CF_API_TOKEN}`
++              'Authorization': `Bearer ${process.env.NEXT_PUBLIC_CF_API_TOKEN}`
