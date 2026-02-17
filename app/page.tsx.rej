@@ -1,0 +1,10 @@
+@@ -140,7 +140,7 @@
+     setDialogueNodes(initialNodes);
+ 
+     try {
+-      for (let i = 0; i < script.length; i++) {
++      // Generate all images in parallel for better latency
++      const imagePromises = script.map(async (_, i) => {
+         // Generate image for this node
+         const imageUrl = SAMPLE_IMAGES[i % SAMPLE_IMAGES.length];
+-        // Faster generation delay for improved latency
