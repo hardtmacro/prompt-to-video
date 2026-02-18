@@ -25,19 +25,20 @@ const CHARACTER_VOICES: Record<string, { rate?: number; pitch?: number; voiceNam
   'Guide': { rate: 0.85, pitch: 0.9, voiceName: 'Google UK English Male' },
   'Spirit': { rate: 0.95, pitch: 1.2, voiceName: 'Google US English' },
   'Guardian': { rate: 0.8, pitch: 0.8, voiceName: 'Google UK English Male' },
+  'Oracle': { rate: 0.85, pitch: 1.15, voiceName: 'Google US English' },
 };
 
 function generateScript(userPrompt: string): Array<{ name: string; text: string; imagePrompt: string }> {
   const theme = userPrompt.trim();
   
   return [
-    { name: 'Narrator', text: `In the world of ${theme}, a tale of transformation is about to unfold. The stage is set, and destiny awaits those bold enough to seek it.`, imagePrompt: `cinematic wide establishing shot, ${theme}, dramatic golden hour lighting, epic scale, movie poster style, consistent color palette` },
-    { name: 'Seeker', text: `I've traveled far to find this place. They say ${theme} holds the answers I've been searching for my entire life.`, imagePrompt: `close-up portrait of determined traveler, ${theme} in background, warm lighting, cinematic, consistent visual theme` },
+    { name: 'Narrator', text: `In the world of ${theme}, a tale of transformation is about to unfold. The stage is set, and destiny awaits those bold enough to seek it.`, imagePrompt: `cinematic wide establishing shot, ${theme} world, dramatic golden hour lighting, epic scale, movie poster style, consistent color palette` },
+    { name: 'Seeker', text: `I've traveled far to find this place. They say ${theme} holds the answers I've been searching for my entire life.`, imagePrompt: `close-up portrait of determined traveler, ${theme} in background, warm cinematic lighting, consistent visual theme` },
     { name: 'Guide', text: `Many come to ${theme} seeking glory, but few understand what true power costs. Are you prepared for the journey ahead?`, imagePrompt: `wise mentor figure standing in doorway, ${theme} environment, mystical atmosphere, consistent lighting style` },
-    { name: 'Seeker', text: `I've faced challenges before. Whatever ${theme} throws at me, I won't back down. Show me what I need to learn.`, imagePrompt: `brave hero ready for adventure, standing tall, ${theme} landscape, dramatic pose, cinematic lighting` },
+    { name: 'Seeker', text: `I've faced challenges before. Whatever ${theme} throws at me, I won't back down. Show me what I need to learn.`, imagePrompt: `brave hero ready for adventure, standing tall, ${theme} landscape, dramatic pose, cinematic lighting, consistent theme` },
     { name: 'Spirit', text: `The path through ${theme} is not for the faint of heart. You must first understand yourself before you can conquer your fears.`, imagePrompt: `ethereal spirit guide appearing from mist, ${theme} mystical realm, supernatural glow, consistent visual style` },
     { name: 'Guardian', text: `You have come far, but the final trial awaits. Only those who truly understand ${theme} can pass through these gates.`, imagePrompt: `formidable guardian at gate, ${theme} fortress, imposing presence, consistent dark cinematic theme` },
-    { name: 'Seeker', text: `I see it now - the heart of ${theme}. This is where my true test begins. I won't let this opportunity pass me by.`, imagePrompt: `hero confronting great challenge, ${theme} dramatic moment, powerful composition, cinematic style` },
+    { name: 'Seeker', text: `I see it now - the heart of ${theme}. This is where my true test begins. I won't let this opportunity pass me by.`, imagePrompt: `hero confronting great challenge, ${theme} dramatic moment, powerful composition, cinematic style, consistent theme` },
     { name: 'Oracle', text: `The wisdom you seek lies not in the destination, but in the journey itself. You have already found what you were looking for.`, imagePrompt: `mysterious oracle figure shrouded in light, ${theme} temple, divine glow, consistent mystical theme` },
     { name: 'Narrator', text: `And so, in the world of ${theme}, a new chapter begins. The seeker has found not just answers, but wisdom that will guide countless others.`, imagePrompt: `panoramic view of transformed world, ${theme} harmonious landscape, beautiful sunrise, consistent cinematic quality` },
     { name: 'Guide', text: `Remember, in ${theme} and beyond, true power comes from understanding, not force. Go now and share what you have learned.`, imagePrompt: `mentor and student together, ${theme} peaceful ending scene, warm colors, consistent movie poster style` },
@@ -56,6 +57,11 @@ export default function PromptToVideo() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const isPlayingRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
+
+  // FIX: Add a ref to track the current prompt value for use in event handlers
+  // This ensures we always have the latest prompt value even in closures
+  const promptRef = useRef(prompt);
+  promptRef.current = prompt;
 
   useEffect(() => {
     return () => {
@@ -144,14 +150,16 @@ export default function PromptToVideo() {
   }, [isMuted]);
 
   const handleGenerateAll = async () => {
-    if (!prompt.trim()) return;
+    // FIX: Use ref to get current prompt value to avoid stale closure
+    const currentPrompt = promptRef.current;
+    if (!currentPrompt.trim()) return;
     
     setIsGenerating(true);
     setError(null);
     abortRef.current = new AbortController();
     
     try {
-      const script = generateScript(prompt);
+      const script = generateScript(currentPrompt);
       const initialNodes: DialogueNode[] = script.map((item, idx) => ({
         id: `node-${idx}`,
         characterName: item.name,
@@ -166,8 +174,8 @@ export default function PromptToVideo() {
       for (let i = 0; i < initialNodes.length; i++) {
         if (abortRef.current?.signal.aborted) break;
         
-        setDialogueNodes(prev => prev.map((n, idx) => 
-          idx === i ? { ...n, status: 'loading' } : n
+        setDialogueNodes(prev => prev.map((node, idx) => 
+          idx === i ? { ...node, status: 'loading' as const } : node
         ));
         
         try {
@@ -176,17 +184,12 @@ export default function PromptToVideo() {
             generateSpeech(initialNodes[i].text, abortRef.current?.signal),
           ]);
           
-          setDialogueNodes(prev => prev.map((n, idx) => 
-            idx === i ? { 
-              ...n, 
-              imageUrl: imageUrl || undefined, 
-              audioUrl: audioUrl || undefined,
-              status: (imageUrl || audioUrl) ? 'ready' : 'error'
-            } : n
+          setDialogueNodes(prev => prev.map((node, idx) => 
+            idx === i ? { ...node, imageUrl, audioUrl: audioUrl || undefined, status: 'ready' as const } : node
           ));
         } catch (err) {
-          setDialogueNodes(prev => prev.map((n, idx) => 
-            idx === i ? { ...n, status: 'error' } : n
+          setDialogueNodes(prev => prev.map((node, idx) => 
+            idx === i ? { ...node, status: 'error' as const } : node
           ));
         }
       }
@@ -194,331 +197,272 @@ export default function PromptToVideo() {
       setError(err instanceof Error ? err.message : 'Generation failed');
     } finally {
       setIsGenerating(false);
-      abortRef.current = null;
     }
   };
 
-  const handlePlay = useCallback(async () => {
+  const handlePrevious = async () => {
+    if (currentIndex > 0) {
+      const newIndex = currentIndex - 1;
+      setCurrentIndex(newIndex);
+      await playNodeAudio(dialogueNodes[newIndex]);
+    }
+  };
+
+  const handleNext = async () => {
+    if (currentIndex < dialogueNodes.length - 1) {
+      const newIndex = currentIndex + 1;
+      setCurrentIndex(newIndex);
+      await playNodeAudio(dialogueNodes[newIndex]);
+    }
+  };
+
+  const handlePlayPause = async () => {
     if (isPlaying) {
+      window.speechSynthesis.cancel();
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
       setIsPlaying(false);
       isPlayingRef.current = false;
-      if (audioRef.current) audioRef.current.pause();
-      if (typeof window !== 'undefined' && window.speechSynthesis) {
-        window.speechSynthesis.cancel();
-      }
-      return;
-    }
-
-    setIsPlaying(true);
-    isPlayingRef.current = true;
-
-    for (let i = currentIndex; i < dialogueNodes.length; i++) {
-      if (!isPlayingRef.current) break;
+    } else {
+      setIsPlaying(true);
+      isPlayingRef.current = true;
       
-      setCurrentIndex(i);
-      const node = dialogueNodes[i];
-      
-      if (node.status === 'ready' || node.status === 'pending') {
-        try {
+      for (let i = currentIndex; i < dialogueNodes.length; i++) {
+        if (!isPlayingRef.current) break;
+        
+        setCurrentIndex(i);
+        const node = dialogueNodes[i];
+        
+        if (node.status === 'ready') {
           await playNodeAudio(node);
-        } catch (e) {
-          console.error('Playback error:', e);
+        } else {
+          await new Promise(resolve => setTimeout(resolve, 3000));
         }
         
-        await new Promise(resolve => setTimeout(resolve, 500));
+        if (i === dialogueNodes.length - 1) {
+          setIsPlaying(false);
+          isPlayingRef.current = false;
+        }
       }
     }
-    
-    setIsPlaying(false);
-    isPlayingRef.current = false;
-  }, [isPlaying, currentIndex, dialogueNodes, playNodeAudio]);
-
-  const handleNodeClick = (index: number) => {
-    if (isPlaying) {
-      setIsPlaying(false);
-      isPlayingRef.current = false;
-      if (audioRef.current) audioRef.current.pause();
-      if (typeof window !== 'undefined' && window.speechSynthesis) {
-        window.speechSynthesis.cancel();
-      }
-    }
-    setCurrentIndex(index);
   };
 
   const handleReset = () => {
-    if (isPlaying) {
-      setIsPlaying(false);
-      isPlayingRef.current = false;
+    window.speechSynthesis.cancel();
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
     }
-    if (audioRef.current) audioRef.current.pause();
-    if (typeof window !== 'undefined' && window.speechSynthesis) {
-      window.speechSynthesis.cancel();
-    }
+    setIsPlaying(false);
+    isPlayingRef.current = false;
     setCurrentIndex(0);
   };
 
-  const readyCount = dialogueNodes.filter(n => n.status === 'ready').length;
+  const currentNode = dialogueNodes[currentIndex];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+    <div className="min-h-screen bg-neutral-950 text-white font-sans">
       <audio ref={audioRef} className="hidden" />
-
+      
       {/* Header */}
-      <header className="border-b border-white/10 bg-black/20 backdrop-blur-sm sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+      <header className="border-b border-neutral-800 bg-neutral-900/50 backdrop-blur-sm sticky top-0 z-10">
+        <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-purple-500/20 rounded-lg">
-              <Sparkles className="w-6 h-6 text-purple-400" />
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-600 to-indigo-600 flex items-center justify-center">
+              <Sparkles className="w-5 h-5 text-white" />
             </div>
-            <h1 className="text-xl font-bold text-white">Prompt to Video Story</h1>
+            <h1 className="text-xl font-semibold bg-gradient-to-r from-white to-neutral-400 bg-clip-text text-transparent">
+              Prompt to Video
+            </h1>
           </div>
-          <div className="flex items-center gap-4">
-            {dialogueNodes.length > 0 && (
-              <div className="flex items-center gap-2 text-sm text-gray-300">
-                <ImageIcon className="w-4 h-4" />
-                <span>{readyCount}/{dialogueNodes.length} ready</span>
-              </div>
-            )}
-            <button
-              onClick={toggleMute}
-              className="p-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors"
-            >
-              {isMuted ? (
-                <VolumeX className="w-5 h-5 text-gray-300" />
-              ) : (
-                <Volume2 className="w-5 h-5 text-gray-300" />
-              )}
-            </button>
+          <div className="flex items-center gap-2 text-sm text-neutral-400">
+            <Info className="w-4 h-4" />
+            <span>{dialogueNodes.length} scenes</span>
           </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 py-8">
-        {/* Input Section */}
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-8"
-        >
-          <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6">
-            <label className="block text-sm font-medium text-gray-300 mb-3">
-              Enter your story theme
-            </label>
-            <div className="flex gap-3">
-              <input
-                type="text"
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                placeholder="e.g., The Lost Kingdom, Space Odyssey, Ancient Egypt..."
-                className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50"
-                disabled={isGenerating}
-              />
-              <button
-                onClick={handleGenerateAll}
-                disabled={!prompt.trim() || isGenerating}
-                className={clsx(
-                  "px-6 py-3 rounded-xl font-medium flex items-center gap-2 transition-all",
-                  prompt.trim() && !isGenerating
-                    ? "bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white shadow-lg shadow-purple-500/25"
-                    : "bg-white/10 text-gray-500 cursor-not-allowed"
-                )}
-              >
-                {isGenerating ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    <span>Generating...</span>
-                  </>
-                ) : (
-                  <>
-                    <Wand2 className="w-5 h-5" />
-                    <span>Generate Story</span>
-                  </>
-                )}
-              </button>
-            </div>
-            {error && (
-              <motion.p 
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="mt-3 text-red-400 text-sm flex items-center gap-2"
-              >
-                <Info className="w-4 h-4" />
-                {error}
-              </motion.p>
-            )}
+      <main className="max-w-6xl mx-auto px-4 py-8">
+        {/* Prompt Input */}
+        <div className="mb-8">
+          <label className="block text-sm font-medium text-neutral-300 mb-2">
+            Enter your story prompt
+          </label>
+          <div className="flex gap-3">
+            <input
+              type="text"
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder="e.g., The Kingdom of Shadows, A Journey Through Time, The Last Frontier..."
+              className="flex-1 bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-violet-500/50 focus:border-violet-500 transition-all"
+            />
+            <button
+              onClick={handleGenerateAll}
+              disabled={isGenerating || !prompt.trim()}
+              className={clsx(
+                "px-6 py-3 rounded-xl font-semibold flex items-center gap-2 transition-all shadow-lg",
+                isGenerating || !prompt.trim()
+                  ? "bg-neutral-800 text-neutral-500 cursor-not-allowed opacity-50"
+                  : "bg-purple-600 hover:bg-purple-500 text-white shadow-purple-900/20"
+              )}
+            >
+              {isGenerating ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Wand2 className="w-5 h-5" />
+                  Generate
+                </>
+              )}
+            </button>
           </div>
-        </motion.div>
+        </div>
 
-        {/* Story Timeline */}
-        {dialogueNodes.length > 0 && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="space-y-6"
-          >
-            {/* Playback Controls */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <button
-                  onClick={handlePlay}
-                  disabled={dialogueNodes.every(n => n.status === 'error' || n.status === 'pending')}
-                  className={clsx(
-                    "p-3 rounded-full flex items-center gap-2 transition-all",
-                    dialogueNodes.some(n => n.status === 'ready')
-                      ? "bg-purple-500 hover:bg-purple-600 text-white shadow-lg shadow-purple-500/25"
-                      : "bg-white/10 text-gray-500 cursor-not-allowed"
-                  )}
-                >
-                  {isPlaying ? (
-                    <>
-                      <Pause className="w-5 h-5" />
-                      <span className="font-medium">Pause</span>
-                    </>
-                  ) : (
-                    <>
-                      <Play className="w-5 h-5" />
-                      <span className="font-medium">Play All</span>
-                    </>
-                  )}
-                </button>
-                <button
-                  onClick={handleReset}
-                  className="p-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors"
-                >
-                  <RotateCcw className="w-5 h-5 text-gray-300" />
-                </button>
-              </div>
-              
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setCurrentIndex(i => Math.max(0, i - 1))}
-                  disabled={currentIndex === 0}
-                  className="p-2 rounded-lg bg-white/5 hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  <ChevronLeft className="w-5 h-5 text-gray-300" />
-                </button>
-                <span className="text-gray-300 text-sm">
-                  {currentIndex + 1} / {dialogueNodes.length}
-                </span>
-                <button
-                  onClick={() => setCurrentIndex(i => Math.min(dialogueNodes.length - 1, i + 1))}
-                  disabled={currentIndex === dialogueNodes.length - 1}
-                  className="p-2 rounded-lg bg-white/5 hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  <ChevronRight className="w-5 h-5 text-gray-300" />
-                </button>
-              </div>
-            </div>
+        {error && (
+          <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 flex items-center gap-2">
+            <Info className="w-5 h-5" />
+            {error}
+          </div>
+        )}
 
-            {/* Main Content Area */}
-            <div className="grid lg:grid-cols-2 gap-6">
-              {/* Image Display */}
-              <motion.div 
-                key={currentIndex}
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="aspect-video bg-black/40 rounded-2xl overflow-hidden border border-white/10"
-              >
-                {dialogueNodes[currentIndex]?.imageUrl ? (
+        {/* Story Display */}
+        {dialogueNodes.length > 0 && currentNode && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {/* Image Panel */}
+            <div className="space-y-4">
+              <div className="aspect-video bg-neutral-900 rounded-2xl overflow-hidden border border-neutral-800 relative">
+                {currentNode.status === 'loading' ? (
+                  <div className="absolute inset-0 flex items-center justify-center bg-neutral-900">
+                    <Loader2 className="w-12 h-12 animate-spin text-violet-500" />
+                  </div>
+                ) : currentNode.imageUrl ? (
                   <img 
-                    src={dialogueNodes[currentIndex].imageUrl} 
-                    alt="Scene"
+                    src={currentNode.imageUrl} 
+                    alt={currentNode.imagePrompt}
                     className="w-full h-full object-cover"
                   />
-                ) : dialogueNodes[currentIndex]?.status === 'loading' ? (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <Loader2 className="w-12 h-12 text-purple-400 animate-spin" />
-                  </div>
                 ) : (
-                  <div className="w-full h-full flex flex-col items-center justify-center text-gray-500">
-                    <ImageIcon className="w-16 h-16 mb-4 opacity-50" />
-                    <p>Generate to see image</p>
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <ImageIcon className="w-16 h-16 text-neutral-700" />
                   </div>
                 )}
-              </motion.div>
+              </div>
+              
+              {/* Scene Navigation */}
+              <div className="flex items-center justify-between">
+                <button
+                  onClick={handlePrevious}
+                  disabled={currentIndex === 0 || isGenerating}
+                  className="p-2 rounded-lg bg-neutral-900 hover:bg-neutral-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  <ChevronLeft className="w-5 h-5" />
+                </button>
+                <span className="text-sm text-neutral-400">
+                  Scene {currentIndex + 1} of {dialogueNodes.length}
+                </span>
+                <button
+                  onClick={handleNext}
+                  disabled={currentIndex === dialogueNodes.length - 1 || isGenerating}
+                  className="p-2 rounded-lg bg-neutral-900 hover:bg-neutral-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  <ChevronRight className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
 
-              {/* Dialogue Card */}
-              <motion.div 
-                key={`dialogue-${currentIndex}`}
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 flex flex-col"
-              >
+            {/* Dialogue Panel */}
+            <div className="space-y-6">
+              <div className="bg-neutral-900/50 rounded-2xl p-6 border border-neutral-800">
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white font-bold">
-                    {dialogueNodes[currentIndex]?.characterName.charAt(0)}
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-violet-600 to-indigo-600 flex items-center justify-center text-white font-semibold">
+                    {currentNode.characterName.charAt(0)}
                   </div>
                   <div>
-                    <h3 className="text-white font-semibold">{dialogueNodes[currentIndex]?.characterName}</h3>
+                    <h3 className="font-semibold text-white">{currentNode.characterName}</h3>
                     <span className={clsx(
                       "text-xs px-2 py-0.5 rounded-full",
-                      dialogueNodes[currentIndex]?.status === 'ready' && "bg-green-500/20 text-green-400",
-                      dialogueNodes[currentIndex]?.status === 'loading' && "bg-yellow-500/20 text-yellow-400",
-                      dialogueNodes[currentIndex]?.status === 'pending' && "bg-gray-500/20 text-gray-400",
-                      dialogueNodes[currentIndex]?.status === 'error' && "bg-red-500/20 text-red-400"
+                      currentNode.status === 'ready' && "bg-green-500/20 text-green-400",
+                      currentNode.status === 'loading' && "bg-yellow-500/20 text-yellow-400",
+                      currentNode.status === 'error' && "bg-red-500/20 text-red-400",
+                      currentNode.status === 'pending' && "bg-neutral-700 text-neutral-400"
                     )}>
-                      {dialogueNodes[currentIndex]?.status}
+                      {currentNode.status}
                     </span>
                   </div>
                 </div>
-                <p className="text-gray-200 leading-relaxed flex-1">
-                  {dialogueNodes[currentIndex]?.text}
+                <p className="text-lg text-neutral-200 leading-relaxed">
+                  {currentNode.text}
                 </p>
-                <button
-                  onClick={() => playNodeAudio(dialogueNodes[currentIndex])}
-                  disabled={dialogueNodes[currentIndex]?.status === 'loading'}
-                  className="mt-4 w-full py-2 rounded-lg bg-white/10 hover:bg-white/20 text-gray-200 flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
-                >
-                  <Volume2 className="w-4 h-4" />
-                  <span>Play Voice</span>
-                </button>
-              </motion.div>
-            </div>
+              </div>
 
-            {/* Timeline Nodes */}
-            <div className="flex gap-2 overflow-x-auto pb-2">
-              {dialogueNodes.map((node, idx) => (
+              {/* Controls */}
+              <div className="flex items-center justify-center gap-4">
                 <button
-                  key={node.id}
-                  onClick={() => handleNodeClick(idx)}
-                  className={clsx(
-                    "flex-shrink-0 w-12 h-12 rounded-lg border-2 flex items-center justify-center transition-all",
-                    idx === currentIndex 
-                      ? "border-purple-500 bg-purple-500/20" 
-                      : "border-white/10 bg-white/5 hover:bg-white/10",
-                    node.status === 'ready' && "border-green-500/50",
-                    node.status === 'error' && "border-red-500/50",
-                    node.status === 'loading' && "border-yellow-500/50"
-                  )}
+                  onClick={handleReset}
+                  disabled={isGenerating}
+                  className="p-3 rounded-xl bg-neutral-900 hover:bg-neutral-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
-                  {node.status === 'loading' ? (
-                    <Loader2 className="w-5 h-5 text-yellow-400 animate-spin" />
-                  ) : node.status === 'error' ? (
-                    <span className="text-red-400 text-xs">!</span>
+                  <RotateCcw className="w-5 h-5" />
+                </button>
+                <button
+                  onClick={handlePlayPause}
+                  disabled={isGenerating || dialogueNodes.every(n => n.status !== 'ready')}
+                  className="p-4 rounded-full bg-violet-600 hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {isPlaying ? (
+                    <Pause className="w-6 h-6" />
                   ) : (
-                    <span className="text-gray-300 text-sm">{idx + 1}</span>
+                    <Play className="w-6 h-6 ml-1" />
                   )}
                 </button>
-              ))}
-            </div>
-          </motion.div>
-        )}
+                <button
+                  onClick={toggleMute}
+                  disabled={isGenerating}
+                  className="p-3 rounded-xl bg-neutral-900 hover:bg-neutral-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {isMuted ? (
+                    <VolumeX className="w-5 h-5" />
+                  ) : (
+                    <Volume2 className="w-5 h-5" />
+                  )}
+                </button>
+              </div>
 
-        {/* Empty State */}
-        {dialogueNodes.length === 0 && !isGenerating && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="text-center py-20"
-          >
-            <div className="w-24 h-24 mx-auto mb-6 rounded-full bg-white/5 flex items-center justify-center">
-              <Sparkles className="w-12 h-12 text-purple-400" />
+              {/* Scene List */}
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium text-neutral-400">All Scenes</h4>
+                <div className="max-h-60 overflow-y-auto space-y-1">
+                  {dialogueNodes.map((node, idx) => (
+                    <button
+                      key={node.id}
+                      onClick={() => setCurrentIndex(idx)}
+                      disabled={isGenerating}
+                      className={clsx(
+                        "w-full text-left px-4 py-2 rounded-lg text-sm transition-colors flex items-center gap-2",
+                        idx === currentIndex 
+                          ? "bg-violet-600/20 text-violet-300" 
+                          : "hover:bg-neutral-800 text-neutral-400",
+                        isGenerating && "opacity-50 cursor-not-allowed"
+                      )}
+                    >
+                      <span className={clsx(
+                        "w-2 h-2 rounded-full",
+                        node.status === 'ready' && "bg-green-500",
+                        node.status === 'loading' && "bg-yellow-500 animate-pulse",
+                        node.status === 'error' && "bg-red-500",
+                        node.status === 'pending' && "bg-neutral-600"
+                      )} />
+                      <span className="truncate">{node.characterName}: {node.text.substring(0, 40)}...</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
-            <h2 className="text-2xl font-bold text-white mb-2">Create Your Story</h2>
-            <p className="text-gray-400 max-w-md mx-auto">
-              Enter a theme above and let AI generate a complete visual story with characters, dialogue, and scenes.
-            </p>
-          </motion.div>
+          </div>
         )}
       </main>
     </div>
