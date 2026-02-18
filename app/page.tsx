@@ -42,9 +42,10 @@ function generateScript(userPrompt: string): Array<{ name: string; text: string;
     { name: 'Guide', text: `Many come to ${theme} seeking glory, but few understand what true power costs. Are you prepared for the journey ahead?`, imagePrompt: `wise mentor figure standing in doorway, ${theme} environment, mystical atmosphere, consistent lighting style, cinematic composition` },
     { name: 'Wanderer', text: `The path before you is not what it seems. ${theme} has many secrets hidden in shadow and light.`, imagePrompt: `enigmatic wanderer on rocky path, ${theme} landscape, moody lighting, consistent dark cinematic theme, movie poster style` },
     { name: 'Spirit', text: `The path through ${theme} is not for the faint of heart. You must first understand yourself before you can conquer your fears.`, imagePrompt: `ethereal spirit guide appearing from mist, ${theme} mystical realm, supernatural glow, consistent visual style` },
+    { name: 'Mystic', text: `The path through ${theme} reveals hidden truths. Only by facing your inner self can you truly proceed.`, imagePrompt: `mysterious mystic figure surrounded by glowing runes, ${theme} ancient chamber, ethereal light, consistent cinematic theme` },
     { name: 'Guardian', text: `You have come far, but the final trial awaits. Only those who truly understand ${theme} can pass through these gates.`, imagePrompt: `formidable guardian at gate, ${theme} fortress, imposing presence, consistent dark cinematic theme` },
+    { name: 'Challenger', text: `The heart of ${theme} calls to those brave enough to face it. Your final test begins now.`, imagePrompt: `brave challenger facing great obstacle, ${theme} dramatic moment, powerful composition, cinematic style, consistent theme` },
     { name: 'Elder', text: `The answers you seek are closer than you think. Look within yourself, and you will find the truth of ${theme}.`, imagePrompt: `ancient elder in meditation, ${theme} sacred grove, soft divine light, consistent mystical theme` },
-    { name: 'Seeker', text: `I see it now - the heart of ${theme}. This is where my true test begins. I won't let this opportunity pass me by.`, imagePrompt: `hero confronting great challenge, ${theme} dramatic moment, powerful composition, cinematic style, consistent theme` },
     { name: 'Oracle', text: `The wisdom you seek lies not in the destination, but in the journey itself. You have already found what you were looking for.`, imagePrompt: `mysterious oracle figure shrouded in light, ${theme} temple, divine glow, consistent mystical theme` },
     { name: 'Sage', text: `Remember, in ${theme} and beyond, true power comes from understanding, not force. Go now and share what you have learned.`, imagePrompt: `venerable sage and student together, ${theme} peaceful ending scene, warm colors, consistent movie poster style` },
   ];
@@ -54,6 +55,7 @@ export default function PromptToVideo() {
   const [prompt, setPrompt] = useState('');
   const [dialogueNodes, setDialogueNodes] = useState<DialogueNode[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [isNavigating, setIsNavigating] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
@@ -210,16 +212,20 @@ export default function PromptToVideo() {
   const handlePrevious = async () => {
     if (currentIndex > 0) {
       const newIndex = currentIndex - 1;
+      setIsNavigating(true);
       setCurrentIndex(newIndex);
       await playNodeAudio(dialogueNodes[newIndex]);
+      setIsNavigating(false);
     }
   };
 
   const handleNext = async () => {
     if (currentIndex < dialogueNodes.length - 1) {
+      setIsNavigating(true);
       const newIndex = currentIndex + 1;
       setCurrentIndex(newIndex);
       await playNodeAudio(dialogueNodes[newIndex]);
+      setIsNavigating(false);
     }
   };
 
