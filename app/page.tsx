@@ -179,11 +179,12 @@ export default function PromptToVideo() {
         ));
         
         try {
-          const [imageUrl, audioUrl] = await Promise.all([
-            generateImage(initialNodes[i].imagePrompt, abortRef.current?.signal),
-            generateSpeech(initialNodes[i].text, abortRef.current?.signal),
-          ]);
+          // Generate image first, then audio - sequential to ensure proper loading
+          const imageUrl = await generateImage(initialNodes[i].imagePrompt, abortRef.current?.signal);
           
+          // Only proceed to audio after image is ready
+          const audioUrl = await generateSpeech(initialNodes[i].text, abortRef.current?.signal);
+
           setDialogueNodes(prev => prev.map((node, idx) => 
             idx === i ? { ...node, imageUrl, audioUrl: audioUrl || undefined, status: 'ready' as const } : node
           ));
