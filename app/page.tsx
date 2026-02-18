@@ -14,7 +14,8 @@ import {
   ChevronDown,
   CheckCircle2,
   Volume2,
-  VolumeX
+  VolumeX,
+  MessageSquare
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -169,6 +170,10 @@ export default function PromptToVideoApp() {
       if (audioRef.current) {
         audioRef.current.pause();
       }
+      // Cancel any speech synthesis
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
     };
   }, []);
 
@@ -215,6 +220,11 @@ export default function PromptToVideoApp() {
       abortControllerRef.current.abort();
     }
     
+    // Cancel any ongoing speech synthesis
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+    
     abortControllerRef.current = new AbortController();
     const signal = abortControllerRef.current.signal;
     
@@ -245,7 +255,7 @@ export default function PromptToVideoApp() {
         }
         
         const currentScene = mutableScenes[i];
-        console.log('[handleGenerate] Processing scene', i, ':', currentScene.characterName);
+        console.log('[handleGenerate] Processing scene', i, ':', currentScene.characterName, 'with voice:', currentScene.voiceId);
         
         // Generate image - make the actual API call
         try {
@@ -282,14 +292,14 @@ export default function PromptToVideoApp() {
         }
 
         // Generate audio using text-to-speech API
+        // The API returns an audio/wav blob, not JSON
         try {
-          console.log('[handleGenerate] Calling /api/text-to-speech for scene', i);
+          console.log('[handleGenerate] Calling /api/text-to-speech for scene', i, 'with voice:', currentScene.voiceId);
           
           const ttsRes = await fetch('/api/text-to-speech', {
             method: 'POST',
             headers: { 
-              'Content-Type': 'application/json',
-              'Accept': 'application/json'
+              'Content-Type': 'application/json'
             },
             body: JSON.stringify({ 
               text: currentScene.dialogue,
@@ -301,47 +311,48 @@ export default function PromptToVideoApp() {
           console.log('[handleGenerate] TTS Response status for scene', i, ':', ttsRes.status);
           
           if (ttsRes.ok) {
-            const ttsData = await ttsRes.json();
-            console.log('[handleGenerate] Got audio URL for scene', i, ':', ttsData.audioUrl);
-            mutableScenes[i] = { ...mutableScenes[i], audioUrl: ttsData.audioUrl };
+            // The API returns an audio/wav blob
+            const audioBlob = await ttsRes.blob();
+            console.log('[handleGenerate] Got audio blob for scene', i, 'size:', audioBlob.size);
+            
+            if (audioBlob.size > 0) {
+              // Create a blob URL for the audio
+              const audioUrl = URL.createObjectURL(audioBlob);
+              console.log('[handleGenerate] Created audio URL for scene', i, ':', audioUrl);
+              mutableScenes[i] = { ...mutableScenes[i], audioUrl };
+            }
           } else {
-            const errorText = await ttsRes.text();
-            console.error('[handleGenerate] TTS API error for scene', i, ':', errorText);
-            throw new Error(`TTS API returned ${ttsRes.status}: ${errorText}`);
+            console.error('[handleGenerate] TTS API error for scene', i, ':', ttsRes.status);
           }
         } catch (err) {
           console.error('[handleGenerate] TTS generation failed for scene', i, err);
-          // Use empty audio URL - will be handled gracefully
-          mutableScenes[i] = { ...mutableScenes[i], audioUrl: undefined };
         }
 
-        // Update state with current scene progress
+        // Update the scenes state with the current scene's generated content
         setScenes([...mutableScenes]);
         setBufferedScenes(prev => new Set(prev).add(currentScene.id));
-        
-        // If first scene has content, stop buffering and show it
-        if (i === 0 && mutableScenes[0].imageUrl) {
-          setIsBuffering(false);
-          setCurrentSceneIndex(0);
-        }
       }
 
       console.log('[handleGenerate] Generation complete');
       setIsBuffering(false);
       
-      // Add system message
+      // Add system message about completion
       setChatMessages(prev => [...prev, {
         sender: 'system',
-        text: `Generated ${mutableScenes.length} scenes with images and audio. Press play to watch!`,
+        text: `Your story "${promptRef.current}" has been generated with ${storyScenes.length} scenes!`,
         timestamp: new Date()
       }]);
-      
+
     } catch (err) {
       console.error('[handleGenerate] Generation failed:', err);
-      setGenerationError(err instanceof Error ? err.message : 'Generation failed');
-      setIsBuffering(false);
+      if (!signal.aborted) {
+        setGenerationError(err instanceof Error ? err.message : 'Generation failed');
+        setIsBuffering(false);
+      }
     } finally {
-      setIsGenerating(false);
+      if (!abortControllerRef.current?.signal.aborted) {
+        setIsGenerating(false);
+      }
     }
   }, []);
 
@@ -349,295 +360,334 @@ export default function PromptToVideoApp() {
     if (scenes.length === 0) return;
     
     setIsPlaying(prev => {
-      const newPlaying = !prev;
-      if (newPlaying && currentSceneIndex === -1) {
+      const newIsPlaying = !prev;
+      if (newIsPlaying && currentSceneIndex < 0) {
         setCurrentSceneIndex(0);
       }
-      return newPlaying;
+      return newIsPlaying;
     });
   }, [scenes.length, currentSceneIndex]);
 
   const handleNextScene = useCallback(() => {
     if (currentSceneIndex < scenes.length - 1) {
-      const nextIndex = currentSceneIndex + 1;
-      setCurrentSceneIndex(nextIndex);
-      
-      // Auto-play audio for next scene if playing
-      if (isPlaying && scenes[nextIndex]?.audioUrl) {
-        if (audioRef.current) {
-          audioRef.current.src = scenes[nextIndex].audioUrl!;
-          audioRef.current.play().catch(console.error);
-        }
-      }
+      setCurrentSceneIndex(prev => prev + 1);
     }
-  }, [currentSceneIndex, scenes, isPlaying]);
+  }, [currentSceneIndex, scenes.length]);
 
   const handlePrevScene = useCallback(() => {
     if (currentSceneIndex > 0) {
-      const prevIndex = currentSceneIndex - 1;
-      setCurrentSceneIndex(prevIndex);
-      
-      // Auto-play audio for previous scene if playing
-      if (isPlaying && scenes[prevIndex]?.audioUrl) {
-        if (audioRef.current) {
-          audioRef.current.src = scenes[prevIndex].audioUrl!;
-          audioRef.current.play().catch(console.error);
-        }
-      }
+      setCurrentSceneIndex(prev => prev - 1);
     }
-  }, [currentSceneIndex, scenes, isPlaying]);
+  }, [currentSceneIndex]);
 
-  const toggleMute = useCallback(() => {
+  const handleSceneClick = useCallback((index: number) => {
+    setCurrentSceneIndex(index);
+    if (!isPlaying) {
+      setIsPlaying(true);
+    }
+  }, [isPlaying]);
+
+  const handleMuteToggle = useCallback(() => {
     setIsMuted(prev => !prev);
   }, []);
 
-  const handlePromptChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+  const handlePromptChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setPrompt(e.target.value);
-  }, []);
+  };
+
+  // Determine if we should show empty state
+  const showEmptyState = scenes.length === 0 && !isGenerating;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-950 via-purple-950 to-slate-900 text-white">
-      {/* Hidden audio element */}
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+      {/* Hidden audio element for playback */}
       <audio ref={audioRef} preload="auto" />
-      
+
       {/* Header */}
-      <header className="border-b border-white/10 bg-black/20 backdrop-blur-sm sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="bg-gradient-to-r from-indigo-500 to-purple-500 p-2 rounded-lg">
-                <Video className="w-6 h-6 text-white" />
+      <header className="border-b border-white/10 bg-black/20 backdrop-blur-md sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+                <Video className="w-5 h-5 text-white" />
               </div>
-              <h1 className="text-xl font-bold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
-                Prompt-to-Video
-              </h1>
+              <h1 className="text-xl font-bold text-white">Prompt-to-Video</h1>
             </div>
             
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center gap-4">
+              {/* Mute/Unmute Button - needs title attribute */}
               <button
-                onClick={toggleMute}
+                onClick={handleMuteToggle}
                 className="p-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors"
-                aria-label={isMuted ? 'Unmute' : 'Mute'}
+                title={isMuted ? "Unmute" : "Mute"}
               >
-                {isMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+                {isMuted ? (
+                  <VolumeX className="w-5 h-5 text-white" />
+                ) : (
+                  <Volume2 className="w-5 h-5 text-white" />
+                )}
+              </button>
+              
+              <button className="p-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors">
+                <RefreshCw className="w-5 h-5 text-white" />
               </button>
             </div>
           </div>
         </div>
       </header>
 
-      {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Prompt Input Section */}
-        <section className="mb-8">
-          <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6">
-            <label htmlFor="prompt-input" className="block text-sm font-medium text-gray-300 mb-2">
-              Describe your story idea
-            </label>
-            <div className="relative">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Left Panel - Prompt Input */}
+          <div className="lg:col-span-1 space-y-6">
+            {/* Ready to Create heading - shows when no content generated */}
+            {showEmptyState && (
+              <div className="bg-white/5 rounded-2xl p-6 border border-white/10">
+                <h2 className="text-2xl font-bold text-white mb-2">Ready to Create</h2>
+                <p className="text-gray-400 text-sm">
+                  Enter a concept below and watch it transform into an immersive video story with dynamic scenes and unique character voices.
+                </p>
+              </div>
+            )}
+
+            {/* Prompt Input Card */}
+            <div className="bg-white/5 rounded-2xl p-6 border border-white/10">
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Your Concept
+              </label>
               <textarea
-                id="prompt-input"
                 value={prompt}
                 onChange={handlePromptChange}
-                placeholder="Describe your story idea..."
-                disabled={isGenerating}
-                rows={3}
-                className="w-full bg-black/30 border border-white/20 rounded-xl px-4 py-3 pr-12 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                placeholder="Describe your story concept..."
+                className="w-full h-32 bg-black/30 border border-white/10 rounded-xl p-4 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
               />
+              
+              {/* Generate Button - must be disabled when generating */}
               <button
                 onClick={handleGenerate}
-                disabled={isGenerating || !prompt.trim()}
-                className="absolute right-3 bottom-3 bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 disabled:from-gray-500 disabled:to-gray-600 text-white p-2 rounded-lg transition-all duration-200 disabled:cursor-not-allowed"
-                aria-label={isGenerating ? 'Generating...' : 'Generate Story'}
+                disabled={isGenerating}
+                className={`mt-4 w-full py-3 px-6 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all ${
+                  isGenerating
+                    ? 'bg-gray-600 cursor-not-allowed opacity-50'
+                    : 'bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white shadow-lg hover:shadow-purple-500/25'
+                }`}
               >
                 {isGenerating ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    Generating...
+                  </>
                 ) : (
-                  <Sparkles className="w-5 h-5" />
+                  <>
+                    <Sparkles className="w-5 h-5" />
+                    Generate
+                  </>
                 )}
               </button>
             </div>
-            {generationError && (
-              <p className="mt-2 text-red-400 text-sm">{generationError}</p>
-            )}
-          </div>
-        </section>
 
-        {/* Video Preview Section */}
-        <section className="mb-8">
-          <div 
-            ref={videoRef}
-            className="relative aspect-video bg-black rounded-2xl overflow-hidden border border-white/10"
-          >
-            {isBuffering || (isGenerating && currentSceneIndex === -1) ? (
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/50">
-                <Loader2 className="w-16 h-16 text-indigo-400 animate-spin mb-4" />
-                <p className="text-gray-300 text-lg">Generating your story...</p>
-                <p className="text-gray-500 text-sm mt-2">This may take a few moments</p>
+            {/* Story Assistant Section */}
+            <div className="bg-white/5 rounded-2xl p-6 border border-white/10">
+              <div className="flex items-center gap-3 mb-4">
+                <MessageSquare className="w-5 h-5 text-purple-400" />
+                <h3 className="text-lg font-semibold text-white">Story Assistant</h3>
               </div>
-            ) : currentSceneIndex >= 0 && scenes[currentSceneIndex]?.imageUrl ? (
-              <>
-                <img
-                  src={scenes[currentSceneIndex].imageUrl!}
-                  alt={`Scene ${currentSceneIndex + 1}: ${scenes[currentSceneIndex].characterName}`}
-                  className="w-full h-full object-contain bg-black"
-                />
-                {/* Character overlay */}
-                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-6">
-                  <div className="flex items-end justify-between">
-                    <div>
-                      <p className="text-indigo-400 font-medium text-sm uppercase tracking-wide">
-                        {scenes[currentSceneIndex].characterName}
-                      </p>
-                      <p className="text-white text-xl font-bold mt-1">
-                        {scenes[currentSceneIndex].dialogue}
-                      </p>
-                      <p className="text-gray-400 text-sm mt-2 italic">
-                        {scenes[currentSceneIndex].narration}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </>
-            ) : (
-              <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <Video className="w-24 h-24 text-gray-700 mb-4" />
-                <p className="text-gray-500 text-lg">Enter a prompt and generate to start</p>
-              </div>
-            )}
-
-            {/* Playback Controls */}
-            {scenes.length > 0 && (
-              <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex items-center space-x-4 bg-black/60 backdrop-blur-sm rounded-full px-6 py-3">
-                <button
-                  onClick={handlePrevScene}
-                  disabled={currentSceneIndex <= 0}
-                  className="p-2 rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                  aria-label="Previous scene"
-                >
-                  <ChevronDown className="w-5 h-5 rotate-90" />
-                </button>
-                
-                <button
-                  onClick={handlePlayPause}
-                  className="p-3 rounded-full bg-indigo-500 hover:bg-indigo-600 transition-colors"
-                  aria-label={isPlaying ? 'Pause' : 'Play'}
-                >
-                  {isPlaying ? (
-                    <Pause className="w-6 h-6" />
-                  ) : (
-                    <Play className="w-6 h-6" />
-                  )}
-                </button>
-                
-                <button
-                  onClick={handleNextScene}
-                  disabled={currentSceneIndex >= scenes.length - 1}
-                  className="p-2 rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                  aria-label="Next scene"
-                >
-                  <ChevronDown className="w-5 h-5 -rotate-90" />
-                </button>
-                
-                <div className="text-sm text-gray-400 ml-2">
-                  {currentSceneIndex + 1} / {scenes.length}
-                </div>
-              </div>
-            )}
-          </div>
-        </section>
-
-        {/* Scene Timeline */}
-        {scenes.length > 0 && (
-          <section className="mb-8">
-            <h2 className="text-lg font-semibold mb-4 flex items-center">
-              <FileText className="w-5 h-5 mr-2" />
-              Story Scenes
-            </h2>
-            <div className="flex space-x-3 overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-white/20">
-              <AnimatePresence>
-                {scenes.map((scene, index) => (
-                  <motion.button
-                    key={scene.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -20 }}
-                    onClick={() => setCurrentSceneIndex(index)}
-                    className={`flex-shrink-0 w-48 rounded-xl overflow-hidden border-2 transition-all ${
-                      currentSceneIndex === index 
-                        ? 'border-indigo-500 ring-2 ring-indigo-500/50' 
-                        : 'border-white/10 hover:border-white/30'
-                    }`}
-                  >
-                    <div className="aspect-video bg-black relative">
-                      {scene.imageUrl ? (
-                        <img 
-                          src={scene.imageUrl} 
-                          alt={scene.characterName}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center">
-                          <Loader2 className="w-8 h-8 text-gray-600 animate-spin" />
-                        </div>
-                      )}
-                      {index === currentSceneIndex && (
-                        <div className="absolute top-2 right-2">
-                          <Play className="w-4 h-4 text-white" fill="white" />
-                        </div>
-                      )}
-                    </div>
-                    <div className="p-3 bg-white/5">
-                      <p className="text-indigo-400 text-xs font-medium uppercase">{scene.characterName}</p>
-                      <p className="text-gray-300 text-sm truncate mt-1">{scene.dialogue}</p>
-                    </div>
-                  </motion.button>
-                ))}
-              </AnimatePresence>
-            </div>
-          </section>
-        )}
-
-        {/* Chat Section */}
-        <section>
-          <h2 className="text-lg font-semibold mb-4 flex items-center">
-            <Mic2 className="w-5 h-5 mr-2" />
-            Story Chat
-          </h2>
-          <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 max-h-80 overflow-y-auto">
-            <div className="space-y-4">
-              {chatMessages.map((msg, index) => (
-                <div
-                  key={index}
-                  className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
-                >
+              
+              {/* Chat messages */}
+              <div className="space-y-4 max-h-64 overflow-y-auto">
+                {chatMessages.map((msg, idx) => (
                   <div
-                    className={`max-w-[80%] rounded-2xl px-4 py-2 ${
-                      msg.sender === 'user'
-                        ? 'bg-indigo-500 text-white'
+                    key={idx}
+                    className={`p-3 rounded-lg ${
+                      msg.sender === 'system'
+                        ? 'bg-purple-500/20 text-purple-200'
                         : 'bg-white/10 text-gray-200'
                     }`}
                   >
                     <p className="text-sm">{msg.text}</p>
-                    <p className="text-xs opacity-60 mt-1">
-                      {msg.timestamp.toLocaleTimeString()}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Stats / Info */}
+            {scenes.length > 0 && (
+              <div className="bg-white/5 rounded-2xl p-6 border border-white/10">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="text-center p-3 bg-white/5 rounded-lg">
+                    <p className="text-2xl font-bold text-white">{scenes.length}</p>
+                    <p className="text-xs text-gray-400">Scenes</p>
+                  </div>
+                  <div className="text-center p-3 bg-white/5 rounded-lg">
+                    <p className="text-2xl font-bold text-white">
+                      {Math.round(scenes.reduce((acc, s) => acc + (s.dialogue?.length || 0), 0) / 60)}s
                     </p>
+                    <p className="text-xs text-gray-400">Est. Duration</p>
                   </div>
                 </div>
-              ))}
-            </div>
+              </div>
+            )}
           </div>
-        </section>
-      </main>
 
-      {/* Footer */}
-      <footer className="border-t border-white/10 bg-black/20 mt-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <p className="text-center text-gray-500 text-sm">
-            Prompt-to-Video Generator • Press arrow keys to navigate, space to play/pause
-          </p>
+          {/* Right Panel - Video Preview */}
+          <div className="lg:col-span-2">
+            <div 
+              ref={videoRef}
+              className="relative aspect-video bg-black rounded-2xl overflow-hidden border border-white/10 shadow-2xl"
+            >
+              {/* Show placeholder when no scenes */}
+              {showEmptyState ? (
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-slate-800 to-slate-900">
+                  <Video className="w-16 h-16 text-gray-600 mb-4" />
+                  <p className="text-gray-500 text-lg">Your generated video will appear here</p>
+                </div>
+              ) : (
+                <>
+                  {/* Scene Image */}
+                  {currentSceneIndex >= 0 && scenes[currentSceneIndex]?.imageUrl && (
+                    <motion.img
+                      key={scenes[currentSceneIndex].id}
+                      src={scenes[currentSceneIndex].imageUrl}
+                      alt={`Scene ${currentSceneIndex + 1}`}
+                      className="w-full h-full object-cover"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ duration: 0.3 }}
+                    />
+                  )}
+
+                  {/* Scene Info Overlay */}
+                  {currentSceneIndex >= 0 && scenes[currentSceneIndex] && (
+                    <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent p-6">
+                      <motion.div
+                        key={`info-${scenes[currentSceneIndex].id}`}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.3 }}
+                      >
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="px-2 py-1 bg-purple-500/30 rounded text-purple-300 text-xs font-medium">
+                            Scene {currentSceneIndex + 1} of {scenes.length}
+                          </span>
+                          {scenes[currentSceneIndex].audioUrl && (
+                            <span className="px-2 py-1 bg-green-500/30 rounded text-green-300 text-xs font-medium flex items-center gap-1">
+                              <Mic2 className="w-3 h-3" /> Audio Ready
+                            </span>
+                          )}
+                        </div>
+                        <h3 className="text-xl font-bold text-white mb-1">
+                          {scenes[currentSceneIndex].characterName}
+                        </h3>
+                        <p className="text-gray-300 text-sm mb-2">
+                          "{scenes[currentSceneIndex].dialogue}"
+                        </p>
+                        <p className="text-gray-400 text-xs italic">
+                          {scenes[currentSceneIndex].narration}
+                        </p>
+                      </motion.div>
+                    </div>
+                  )}
+
+                  {/* Buffering Overlay */}
+                  {isBuffering && (
+                    <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                      <div className="text-center">
+                        <Loader2 className="w-12 h-12 text-purple-500 animate-spin mx-auto mb-4" />
+                        <p className="text-white text-lg">Generating your story...</p>
+                        <p className="text-gray-400 text-sm mt-2">
+                          Creating {scenes.length} scenes with images and audio
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Error Overlay */}
+                  {generationError && (
+                    <div className="absolute inset-0 bg-red-900/60 flex items-center justify-center">
+                      <div className="text-center p-6">
+                        <p className="text-white text-lg mb-2">Generation Error</p>
+                        <p className="text-gray-300 text-sm">{generationError}</p>
+                        <button
+                          onClick={() => setGenerationError(null)}
+                          className="mt-4 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-white text-sm"
+                        >
+                          Dismiss
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Playback Controls */}
+            {scenes.length > 0 && (
+              <div className="mt-6 bg-white/5 rounded-2xl p-4 border border-white/10">
+                <div className="flex items-center justify-between">
+                  {/* Play/Pause Button */}
+                  <button
+                    onClick={handlePlayPause}
+                    className="w-12 h-12 rounded-full bg-purple-600 hover:bg-purple-500 flex items-center justify-center transition-colors"
+                  >
+                    {isPlaying ? (
+                      <Pause className="w-5 h-5 text-white" />
+                    ) : (
+                      <Play className="w-5 h-5 text-white ml-0.5" />
+                    )}
+                  </button>
+
+                  {/* Scene Navigation */}
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handlePrevScene}
+                      disabled={currentSceneIndex <= 0}
+                      className="p-2 rounded-lg bg-white/10 hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <ArrowRight className="w-4 h-4 text-white rotate-180" />
+                    </button>
+
+                    {/* Scene Indicators */}
+                    <div className="flex items-center gap-1 max-w-xs overflow-x-auto py-2">
+                      {scenes.map((scene, idx) => (
+                        <button
+                          key={scene.id}
+                          onClick={() => handleSceneClick(idx)}
+                          className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium transition-all ${
+                            idx === currentSceneIndex
+                              ? 'bg-purple-600 text-white scale-110'
+                              : bufferedScenes.has(scene.id)
+                                ? 'bg-green-600/30 text-green-300'
+                                : 'bg-white/10 text-gray-400 hover:bg-white/20'
+                          }`}
+                        >
+                          {idx + 1}
+                        </button>
+                      ))}
+                    </div>
+
+                    <button
+                      onClick={handleNextScene}
+                      disabled={currentSceneIndex >= scenes.length - 1}
+                      className="p-2 rounded-lg bg-white/10 hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <ArrowRight className="w-4 h-4 text-white" />
+                    </button>
+                  </div>
+
+                  {/* Scene Counter */}
+                  <div className="text-sm text-gray-400">
+                    {currentSceneIndex >= 0 ? (
+                      <span>{currentSceneIndex + 1} / {scenes.length}</span>
+                    ) : (
+                      <span>0 / {scenes.length}</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
-      </footer>
+      </main>
     </div>
   );
 }
