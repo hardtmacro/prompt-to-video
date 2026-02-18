@@ -27,17 +27,31 @@ function generateScript(userPrompt: string): Array<{ name: string; text: string;
   const theme = userPrompt.trim();
   const stylePrefix = `Cinematic ${theme} art style, hyper-realistic, 8k resolution, dramatic lighting, consistent character design, concept art, epic composition, professional color grading, atmospheric depth. `;
   
+  const characters = [
+    { name: 'Sage', voice: VOICES[0], role: 'wise elder' },
+    { name: 'Aria', voice: VOICES[1], role: 'brave protagonist' },
+    { name: 'Raven', voice: VOICES[3], role: 'mysterious guide' },
+    { name: 'Theron', voice: VOICES[2], role: 'skeptical companion' },
+    { name: 'The Void', voice: VOICES[0], role: 'antagonist force' },
+  ];
+
   return [
-    { name: 'Narrator', text: `The world of ${theme} was once a paradise, until the shifting began.`, imagePrompt: `${stylePrefix}Epic landscape of ${theme} world, establishing shot.`, voiceId: VOICES[0] },
-    { name: 'Kaelen', text: `I can't believe the legends were true. The ${theme} core is actually here.`, imagePrompt: `${stylePrefix}Kaelen, a young explorer, looking in awe at a glowing artifact.`, voiceId: VOICES[2] },
-    { name: 'Lyra', text: `Watch your step, Kaelen. This place hasn't seen a living soul in centuries.`, imagePrompt: `${stylePrefix}Lyra, a skilled tracker, holding a glowing lantern, cautious expression.`, voiceId: VOICES[1] },
-    { name: 'The Watcher', text: `Who dares disturb the silence of the ${theme} sanctuary?`, imagePrompt: `${stylePrefix}A giant stone statue with glowing eyes, coming to life.`, voiceId: VOICES[0] },
-    { name: 'Kaelen', text: `We come in peace! We only seek to restore the balance of ${theme}.`, imagePrompt: `${stylePrefix}Kaelen raising hands in peace, artifact glowing between them.`, voiceId: VOICES[2] },
-    { name: 'The Watcher', text: `Restoration requires sacrifice. Are you prepared to give what is necessary?`, imagePrompt: `${stylePrefix}The Watcher's face close up, ancient and stern.`, voiceId: VOICES[0] },
-    { name: 'Lyra', text: `We didn't come this far to turn back now. Tell us what must be done.`, imagePrompt: `${stylePrefix}Lyra stepping forward, determined gaze.`, voiceId: VOICES[1] },
-    { name: 'The Watcher', text: `Then touch the core. Let ${theme} judge the purity of your intent.`, imagePrompt: `${stylePrefix}The artifact erupting in brilliant light, illuminating the chamber.`, voiceId: VOICES[0] },
-    { name: 'Kaelen', text: `It's warm... like a heartbeat. The whole world is breathing through this.`, imagePrompt: `${stylePrefix}Close up of hands touching the glowing core, energy tendrils spreading.`, voiceId: VOICES[2] },
-    { name: 'Narrator', text: `As the light faded, the ${theme} realm began its slow transformation back to its former glory.`, imagePrompt: `${stylePrefix}The landscape from the first scene, now lush and vibrant.`, voiceId: VOICES[0] },
+    { name: 'Narrator', text: `In the realm of ${theme}, ancient powers stirred from their eternal slumber.`, imagePrompt: `${stylePrefix}Epic establishing shot of ${theme} world at dawn, mystical atmosphere.`, voiceId: VOICES[0] },
+    { name: characters[0].name, text: `The prophecy speaks of travelers who would come seeking the Heart of ${theme}. I have waited centuries for this moment.`, imagePrompt: `${stylePrefix}An ancient wise elder with glowing eyes, draped in mystical robes, looking toward the horizon.`, voiceId: characters[0].voice },
+    { name: characters[1].name, text: `We crossed the Shattered Lands to get here, Sage. Is the Heart of ${theme} truly within reach?`, imagePrompt: `${stylePrefix}A brave young heroine standing at a cliff's edge, wind blowing through her hair, determined expression.`, voiceId: characters[1].voice },
+    { name: characters[2].name, text: `Careful what you wish for, Aria. The ${theme} Heart has claimed many who came before you.`, imagePrompt: `${stylePrefix}A mysterious cloaked figure emerging from shadows, eyes glowing with ancient knowledge.`, voiceId: characters[2].voice },
+    { name: characters[3].name, text: `I've seen what this place does to dreamers. The ${theme} realm doesn't give freely—it takes.`, imagePrompt: `${stylePrefix}A skeptical warrior examining ancient ruins, hand on weapon, wary expression.`, voiceId: characters[3].voice },
+    { name: characters[0].name, text: `The trial of ${theme} will test your hearts. Only those united by true bonds may claim its power.`, imagePrompt: `${stylePrefix}The Sage gesturing toward a massive stone door covered in glowing runes.`, voiceId: characters[0].voice },
+    { name: characters[1].name, text: `Then let's show ${theme} what true unity looks like. Together, we face whatever comes.`, imagePrompt: `${stylePrefix}The heroine stepping forward confidently, hand reaching out to touch the glowing runes.`, voiceId: characters[1].voice },
+    { name: 'Narrator', text: `The ancient door groaned, revealing the Chamber of ${theme}—a vast hall of floating crystals and pulsing light.`, imagePrompt: `${stylePrefix}Massive chamber filled with floating glowing crystals, ethereal light beams, awe-inspiring scale.`, voiceId: VOICES[0] },
+    { name: characters[2].name, text: `Wait... I sense something ancient awakening. The ${theme} entity stirs within.`, imagePrompt: `${stylePrefix}The mysterious guide raising a hand, sensing danger, shadows gathering around.`, voiceId: characters[2].voice },
+    { name: characters[4].name, text: `FOOLS. You dare enter my domain? I am the embodiment of ${theme}, and you are but fleeting sparks.`, imagePrompt: `${stylePrefix}An enormous dark entity rising from the ground, made of swirling shadows and glowing eyes, terrifying presence.`, voiceId: characters[4].voice },
+    { name: characters[3].name, text: `It's a trap! The ${theme} Heart isn't a gift—it's a prison designed to consume souls!`, imagePrompt: `${stylePrefix}The warrior drawing weapon, standing protectively in front of companions, battle-ready stance.`, voiceId: characters[3].voice },
+    { name: characters[1].name, text: `We won't be consumed! We came here to free ${theme}, not serve it!`, imagePrompt: `${stylePrefix}The heroine surrounded by glowing energy, standing defiant against the darkness.`, voiceId: characters[1].voice },
+    { name: characters[0].name, text: `Aria—use your bond with your companions! Love is stronger than ${theme}'s hunger!`, imagePrompt: `${stylePrefix}The Sage channeling energy, light radiating from hands, inspiring expression.`, voiceId: characters[0].voice },
+    { name: characters[2].name, text: `For all the souls lost to this place—we break the cycle NOW!`, imagePrompt: `${stylePrefix}The mysterious guide unleashing powerful magic, light exploding outward.`, voiceId: characters[2].voice },
+    { name: characters[1].name, text: `Together! We are the light of ${theme}!`, imagePrompt: `${stylePrefix}All four heroes united, brilliant light forming around them, defeating the darkness.`, voiceId: characters[1].voice },
+    { name: 'Narrator', text: `As the light of their unity blazed through the Chamber of ${theme}, the ancient entity shattered. The realm was reborn.`, imagePrompt: `${stylePrefix}The ${theme} world transformed—darkness replaced by brilliant light, flowers blooming, hope restored.`, voiceId: VOICES[0] },
   ];
 }
 
@@ -55,7 +69,6 @@ export default function PromptToVideo() {
   const abortRef = useRef<AbortController | null>(null);
   const nodeRefs = useRef<(HTMLDivElement | null)[]>([]);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (abortRef.current) abortRef.current.abort();
@@ -64,21 +77,18 @@ export default function PromptToVideo() {
   }, []);
 
   const generateImage = async (imagePrompt: string, signal?: AbortSignal): Promise<string> => {
-    try {
-      const res = await fetch('/api/generate-image', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: imagePrompt }),
-        signal,
-      });
-      
-      if (!res.ok) throw new Error('Image failed');
-      const data = await res.json();
-      return data.url || data.image || '';
-    } catch (err) {
-      // Return placeholder SVG - light background for visibility
-      return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600"><rect fill="#f0f0f0" width="800" height="600"/><rect fill="#ddd" x="0" y="450" width="800" height="150"/><text x="400" y="300" text-anchor="middle" fill="#333" font-size="32" font-family="system-ui">Image Placeholder</text></svg>`)}`;
+    const res = await fetch('/api/generate-image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: imagePrompt }),
+      signal,
+    });
+    
+    if (!res.ok) {
+      throw new Error('Image generation failed');
     }
+    const data = await res.json();
+    return data.url || data.image || '';
   };
 
   const generateSpeech = async (text: string, voiceId: string, signal?: AbortSignal): Promise<string | null> => {
@@ -108,7 +118,10 @@ export default function PromptToVideo() {
   }, [isMuted]);
 
   const handleGenerate = async () => {
-    if (!prompt.trim() || isGenerating) return;
+    if (!prompt.trim()) return;
+    
+    // Prevent multiple simultaneous generations
+    if (isGenerating) return;
     
     // Clean up previous generation
     if (abortRef.current) abortRef.current.abort();
@@ -131,7 +144,9 @@ export default function PromptToVideo() {
     isPlayingRef.current = false;
 
     const script = generateScript(prompt);
-    const initialNodes: DialogueNode[] = script.map((item, idx) => ({
+    
+    // Create nodes with proper state references
+    const newNodes: DialogueNode[] = script.map((item, idx) => ({
       id: `node-${idx}`,
       characterName: item.name,
       text: item.text,
@@ -140,18 +155,34 @@ export default function PromptToVideo() {
       status: 'pending',
     }));
 
-    setDialogueNodes(initialNodes);
+    setDialogueNodes(newNodes);
 
     try {
-      for (let i = 0; i < initialNodes.length; i++) {
+      for (let i = 0; i < newNodes.length; i++) {
         if (signal.aborted) break;
 
-        setDialogueNodes(prev => prev.map((n, idx) => idx === i ? { ...n, status: 'loading' } : n));
+        // Update current node to loading state
+        setDialogueNodes(prev => prev.map((n, idx) => 
+          idx === i ? { ...n, status: 'loading' } : n
+        ));
 
-        const [imageUrl, audioUrl] = await Promise.all([
-          generateImage(initialNodes[i].imagePrompt, signal),
-          generateSpeech(initialNodes[i].text, initialNodes[i].voiceId, signal),
-        ]);
+        // Process current node - wrap in try/catch to continue on individual failures
+        let imageUrl = '';
+        let audioUrl: string | null = null;
+
+        try {
+          imageUrl = await generateImage(newNodes[i].imagePrompt, signal);
+        } catch (imgErr) {
+          console.error('Image generation error:', imgErr);
+          // Use placeholder on error
+          imageUrl = `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600"><rect fill="#f0f0f0" width="800" height="600"/><rect fill="#ddd" x="0" y="450" width="800" height="150"/><text x="400" y="300" text-anchor="middle" fill="#333" font-size="32" font-family="system-ui">Image Placeholder</text></svg>`)}`;
+        }
+
+        try {
+          audioUrl = await generateSpeech(newNodes[i].text, newNodes[i].voiceId, signal);
+        } catch (audioErr) {
+          console.error('Speech generation error:', audioErr);
+        }
 
         if (!signal.aborted) {
           setDialogueNodes(prev => prev.map((n, idx) => 
@@ -160,7 +191,8 @@ export default function PromptToVideo() {
         }
       }
     } catch (err) {
-      console.error(err);
+      console.error('Generation error:', err);
+      setError('Failed to generate content');
     } finally {
       setIsGenerating(false);
     }
@@ -178,17 +210,14 @@ export default function PromptToVideo() {
       setCurrentIndex(index);
       nodeRefs.current[index]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       
-      // Try to play audio, but continue even if it fails
       if (node.audioUrl) {
         await playNodeAudio(node);
       }
       
-      // Always advance to next node after a delay, regardless of audio
       if (isPlayingRef.current) {
         setTimeout(() => playNextNode(index + 1), 500);
       }
     } else {
-      // If node is not ready, skip to next
       if (isPlayingRef.current) {
         setTimeout(() => playNextNode(index + 1), 100);
       }
@@ -224,189 +253,191 @@ export default function PromptToVideo() {
 
   return (
     <div className="min-h-screen bg-neutral-950 text-white font-sans selection:bg-indigo-500/30">
-      <audio ref={audioRef} className="hidden" />
-
-      <header className="border-b border-neutral-800 bg-neutral-900/50 backdrop-blur-md sticky top-0 z-50">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+      <audio ref={audioRef} />
+      
+      {/* Header */}
+      <header className="border-b border-neutral-800 bg-neutral-900/50 backdrop-blur-sm sticky top-0 z-10">
+        <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/20">
-              <Sparkles className="w-6 h-6 text-white" />
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+              <Wand2 className="w-5 h-5 text-white" />
             </div>
-            <h1 className="text-xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-neutral-400">
-              StoryGen AI
+            <h1 className="text-xl font-bold bg-gradient-to-r from-white to-neutral-400 bg-clip-text text-transparent">
+              AI Story Generator
             </h1>
           </div>
-          
-          {hasContent && (
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setIsMuted(!isMuted)}
-                className="p-2 hover:bg-neutral-800 rounded-lg transition-colors"
-              >
-                {isMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
-              </button>
-              <button
-                onClick={handleReset}
-                className="flex items-center gap-2 px-4 py-2 hover:bg-neutral-800 rounded-lg transition-colors text-sm font-medium"
-              >
-                <RotateCcw className="w-4 h-4" /> Reset
-              </button>
-            </div>
-          )}
+          <button
+            onClick={handleReset}
+            className="p-2 rounded-lg hover:bg-neutral-800 text-neutral-400 hover:text-white transition-colors"
+            title="Reset"
+          >
+            <RotateCcw className="w-5 h-5" />
+          </button>
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-6 py-12">
-        <AnimatePresence mode="wait">
-          {!hasContent ? (
-            <motion.div 
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="max-w-2xl mx-auto text-center space-y-8"
+      <main className="max-w-6xl mx-auto px-4 py-8">
+        {/* Input Section */}
+        <div className="mb-8">
+          <div className="relative">
+            <textarea
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder="Enter a theme for your story (e.g., 'Cyberpunk Tokyo', 'Medieval Fantasy', 'Space Opera')..."
+              className="w-full h-32 bg-neutral-900 border border-neutral-800 rounded-xl p-4 pr-12 text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 resize-none"
+            />
+            <button
+              onClick={handleGenerate}
+              disabled={isGenerating || !prompt.trim()}
+              className={clsx(
+                "absolute bottom-4 right-4 px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-all",
+                isGenerating || !prompt.trim()
+                  ? "bg-neutral-800 text-neutral-500 cursor-not-allowed"
+                  : "bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/25"
+              )}
             >
-              <div className="space-y-4">
-                <h2 className="text-4xl font-extrabold tracking-tight sm:text-5xl">
-                  Turn any prompt into a <span className="text-indigo-500">cinematic story</span>
-                </h2>
-                <p className="text-neutral-400 text-lg">
-                  Enter a theme or world, and we'll generate a scripted scene with visuals and voiceovers.
-                </p>
-              </div>
-
-              <div className="relative group">
-                <textarea
-                  value={prompt}
-                  onChange={(e) => setPrompt(e.target.value)}
-                  placeholder="e.g. A cyberpunk neon city during a crimson rainstorm..."
-                  className="w-full h-40 bg-neutral-900 border border-neutral-800 rounded-2xl p-6 text-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all resize-none group-hover:border-neutral-700 shadow-2xl"
-                />
-                <button
-                  onClick={handleGenerate}
-                  disabled={isGenerating || !prompt.trim()}
-                  className="absolute bottom-4 right-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-neutral-800 disabled:text-neutral-500 px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-all shadow-xl hover:scale-105 active:scale-95"
-                >
-                  {isGenerating ? (
-                    <><Loader2 className="w-5 h-5 animate-spin" /> Generating...</>
-                  ) : (
-                    <><Send className="w-5 h-5" /> Generate Story</>
-                  )}
-                </button>
-              </div>
-            </motion.div>
-          ) : (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="space-y-8"
-            >
-              {/* Generation progress / controls */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <button
-                    onClick={handlePlayPause}
-                    disabled={!allReady && dialogueNodes.every(n => n.status !== 'ready')}
-                    className="flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-500 disabled:bg-neutral-800 disabled:text-neutral-500 rounded-xl font-bold transition-all hover:scale-105 active:scale-95"
-                  >
-                    {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
-                    {isPlaying ? 'Pause' : 'Play'}
-                  </button>
-                  
-                  {isGenerating && (
-                    <div className="flex items-center gap-2 text-indigo-400">
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                      <span>Generating {currentIndex + 1}/{dialogueNodes.length}</span>
-                    </div>
-                  )}
-                </div>
-                
-                <button
-                  onClick={handleGenerate}
-                  disabled={isGenerating}
-                  className="flex items-center gap-2 px-4 py-2 bg-neutral-800 hover:bg-neutral-700 rounded-lg transition-colors text-sm font-medium"
-                >
-                  <Wand2 className="w-4 h-4" /> Regenerate
-                </button>
-              </div>
-
-              {/* Dialogue nodes */}
-              <div className="space-y-6">
-                {dialogueNodes.map((node, idx) => (
-                  <motion.div
-                    key={node.id}
-                    ref={(el) => { nodeRefs.current[idx] = el; }}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: idx * 0.05 }}
-                    className={clsx(
-                      "bg-neutral-900 rounded-2xl border overflow-hidden transition-all",
-                      currentIndex === idx 
-                        ? "border-indigo-500 ring-2 ring-indigo-500/20" 
-                        : "border-neutral-800"
-                    )}
-                  >
-                    <div className="flex flex-col lg:flex-row">
-                      {/* Image section */}
-                      <div className="lg:w-1/2 relative bg-neutral-950 min-h-[300px] lg:min-h-[400px]">
-                        {node.status === 'loading' ? (
-                          <div className="absolute inset-0 flex items-center justify-center">
-                            <Loader2 className="w-12 h-12 text-indigo-500 animate-spin" />
-                          </div>
-                        ) : node.imageUrl ? (
-                          <img 
-                            src={node.imageUrl} 
-                            alt={node.imagePrompt}
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                              // Fallback if image fails to load
-                              const target = e.target as HTMLImageElement;
-                              target.style.display = 'none';
-                              const parent = target.parentElement;
-                              if (parent) {
-                                const placeholder = document.createElement('div');
-                                placeholder.className = 'w-full h-full flex items-center justify-center bg-neutral-800 text-neutral-400';
-                                placeholder.textContent = 'Image Placeholder';
-                                parent.appendChild(placeholder);
-                              }
-                            }}
-                          />
-                        ) : (
-                          <div className="absolute inset-0 flex items-center justify-center">
-                            <ImageIcon className="w-12 h-12 text-neutral-700" />
-                          </div>
-                        )}
-                      </div>
-                      
-                      {/* Text section */}
-                      <div className="lg:w-1/2 p-6 flex flex-col justify-center">
-                        <div className="flex items-center gap-3 mb-3">
-                          <div className="w-8 h-8 bg-indigo-600 rounded-full flex items-center justify-center">
-                            <User className="w-4 h-4 text-white" />
-                          </div>
-                          <span className="font-bold text-indigo-400">{node.characterName}</span>
-                          {node.status === 'loading' && (
-                            <Loader2 className="w-4 h-4 text-indigo-500 animate-spin ml-auto" />
-                          )}
-                        </div>
-                        
-                        <p className="text-lg leading-relaxed text-neutral-200">
-                          {node.text}
-                        </p>
-                        
-                        {node.error && (
-                          <div className="mt-3 flex items-center gap-2 text-red-400 text-sm">
-                            <AlertCircle className="w-4 h-4" />
-                            {node.error}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
-            </motion.div>
+              {isGenerating ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4" />
+                  Generate
+                </>
+              )}
+            </button>
+          </div>
+          
+          {error && (
+            <div className="mt-3 flex items-center gap-2 text-red-400 text-sm">
+              <AlertCircle className="w-4 h-4" />
+              {error}
+            </div>
           )}
-        </AnimatePresence>
+        </div>
+
+        {/* Playback Controls */}
+        {hasContent && (
+          <div className="mb-6 flex items-center justify-between bg-neutral-900 rounded-xl p-4 border border-neutral-800">
+            <div className="flex items-center gap-4">
+              <button
+                onClick={handlePlayPause}
+                disabled={!allReady}
+                className={clsx(
+                  "w-12 h-12 rounded-full flex items-center justify-center transition-all",
+                  allReady 
+                    ? "bg-indigo-600 hover:bg-indigo-500 text-white" 
+                    : "bg-neutral-800 text-neutral-500 cursor-not-allowed"
+                )}
+              >
+                {isPlaying ? (
+                  <Pause className="w-5 h-5" />
+                ) : (
+                  <Play className="w-5 h-5 ml-0.5" />
+                )}
+              </button>
+              <div>
+                <div className="text-sm font-medium text-white">
+                  {isPlaying ? 'Playing' : allReady ? 'Ready to Play' : 'Generating...'}
+                </div>
+                <div className="text-xs text-neutral-400">
+                  {currentIndex + 1} / {dialogueNodes.length} scenes
+                </div>
+              </div>
+            </div>
+            
+            <button
+              onClick={() => setIsMuted(!isMuted)}
+              className="p-2 rounded-lg hover:bg-neutral-800 text-neutral-400 hover:text-white transition-colors"
+            >
+              {isMuted ? (
+                <VolumeX className="w-5 h-5" />
+              ) : (
+                <Volume2 className="w-5 h-5" />
+              )}
+            </button>
+          </div>
+        )}
+
+        {/* Dialogue Nodes */}
+        <div className="space-y-4">
+          <AnimatePresence>
+            {dialogueNodes.map((node, index) => (
+              <motion.div
+                key={node.id}
+                ref={(el) => { nodeRefs.current[index] = el; }}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ delay: index * 0.05 }}
+                className={clsx(
+                  "bg-neutral-900 rounded-xl border overflow-hidden transition-all",
+                  currentIndex === index 
+                    ? "border-indigo-500 ring-2 ring-indigo-500/20" 
+                    : "border-neutral-800"
+                )}
+              >
+                <div className="flex">
+                  {/* Image Side */}
+                  <div className="w-48 h-32 bg-neutral-800 relative flex-shrink-0">
+                    {node.status === 'loading' ? (
+                      <div className="absolute inset-0 flex items-center justify-center bg-neutral-800">
+                        <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
+                      </div>
+                    ) : node.imageUrl ? (
+                      <img 
+                        src={node.imageUrl} 
+                        alt={node.characterName}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <ImageIcon className="w-8 h-8 text-neutral-600" />
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Content Side */}
+                  <div className="flex-1 p-4">
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <User className="w-4 h-4 text-indigo-400" />
+                        <span className="font-medium text-indigo-400">{node.characterName}</span>
+                      </div>
+                      <span className={clsx(
+                        "text-xs px-2 py-0.5 rounded-full",
+                        node.status === 'ready' && "bg-green-500/20 text-green-400",
+                        node.status === 'loading' && "bg-yellow-500/20 text-yellow-400",
+                        node.status === 'pending' && "bg-neutral-700 text-neutral-400"
+                      )}>
+                        {node.status === 'ready' ? 'Ready' : node.status === 'loading' ? 'Generating' : 'Pending'}
+                      </span>
+                    </div>
+                    
+                    <p className="text-neutral-300 text-sm leading-relaxed">
+                      {node.text}
+                    </p>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </div>
+
+        {/* Empty State */}
+        {!hasContent && (
+          <div className="text-center py-16">
+            <div className="w-16 h-16 rounded-2xl bg-neutral-900 flex items-center justify-center mx-auto mb-4 border border-neutral-800">
+              <ScrollText className="w-8 h-8 text-neutral-600" />
+            </div>
+            <h3 className="text-lg font-medium text-neutral-400 mb-2">No story yet</h3>
+            <p className="text-neutral-500 text-sm max-w-md mx-auto">
+              Enter a theme above and click Generate to create an AI-powered interactive story with images and audio.
+            </p>
+          </div>
+        )}
       </main>
     </div>
   );
