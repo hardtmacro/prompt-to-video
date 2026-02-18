@@ -1,20 +1,20 @@
 {
   "project_name": "prompt-to-video",
-  "description": "Video generation project that converts prompts to videos with intelligent script creation and character-based voice synthesis.",
+  "description": "Fix and verify text-to-audio generation with different character voices based on node character notes",
   "features": [
-    "Start playing video as soon as the first node is ready",
-    "Buffer content when video node or audio aren't available",
-    "Generate improved scripts following a story arc structure",
-    "Use different character voices matching each character instead of a single narrator voice"
+    "Text-to-audio generation verification",
+    "Character-specific voice assignment based on node data",
+    "Audio playback functionality check"
   ],
-  "is_update": false,
-  "existing_project": null,
-  "design_notes": "Video titled Vision Magnet with red cursive title font, black description text, colorful background with objects (clock, chair, table). Chat window interface below video player.",
+  "is_update": true,
+  "existing_project": "Vision Magnet",
+  "design_notes": "White background with black text and vibrant graphics, video clips displayed in vertical list with thumbnails, narrator names and roles displayed below each clip, MAXROOM logo visible",
   "has_dynamic_features": true,
   "stack_tags": [
     "nextjs",
     "tailwind",
     "typescript",
     "framer-motion"
-  ]
+  ],
+  "user_feedback": "I can't hear anything. Check the text to audio generation and also verify\r\nthat different character voices are used based on the character noted on\r\nthe node."
 }
