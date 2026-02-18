@@ -276,242 +276,212 @@ export default function PromptToVideo() {
   };
 
   const currentNode = dialogueNodes[currentIndex];
+  const progress = dialogueNodes.length > 0 ? ((currentIndex + 1) / dialogueNodes.length) * 100 : 0;
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-white font-sans">
-      <audio ref={audioRef} className="hidden" />
+    <div className="min-h-screen bg-neutral-950 text-white">
+      <audio ref={audioRef} />
       
       {/* Header */}
-      <header className="border-b border-neutral-800 bg-neutral-900/50 backdrop-blur-sm sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-600 to-indigo-600 flex items-center justify-center">
-              <Sparkles className="w-5 h-5 text-white" />
+      <header className="border-b border-neutral-800 bg-neutral-900/50 backdrop-blur-sm sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-600 to-indigo-600 flex items-center justify-center">
+                <Sparkles className="w-6 h-6 text-white" />
+              </div>
+              <h1 className="text-xl font-bold bg-gradient-to-r from-violet-400 to-indigo-400 bg-clip-text text-transparent">
+                Prompt to Video
+              </h1>
             </div>
-            <h1 className="text-xl font-semibold bg-gradient-to-r from-white to-neutral-400 bg-clip-text text-transparent">
-              Prompt to Video
-            </h1>
-          </div>
-          <div className="flex items-center gap-2 text-sm text-neutral-400">
-            <Info className="w-4 h-4" />
-            <span>Story Mode</span>
+            <div className="flex items-center gap-2 text-sm text-neutral-400">
+              <Info className="w-4 h-4" />
+              <span>AI-powered story generation</span>
+            </div>
           </div>
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-4 py-8">
-        {/* Prompt Input */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Input Section */}
         <section className="mb-8">
-          <div className="flex flex-col gap-3">
-            <label htmlFor="prompt" className="text-sm font-medium text-neutral-300">
-              Enter your story theme
-            </label>
-            <div className="flex gap-3">
-              <input
-                id="prompt"
-                type="text"
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                placeholder="e.g., The Lost Kingdom, Space Odyssey, Ancient Mysteries..."
-                className="flex-1 px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
-                onKeyDown={(e) => e.key === 'Enter' && !isGenerating && handleGenerateAll()}
-              />
-              <button
-                onClick={handleGenerateAll}
-                disabled={isGenerating || !prompt.trim()}
-                className={clsx(
-                  'px-6 py-3 rounded-xl font-medium transition-all flex items-center gap-2',
-                  isGenerating || !prompt.trim()
-                    ? 'bg-neutral-800 text-neutral-500 cursor-not-allowed'
-                    : 'bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white shadow-lg shadow-violet-600/25'
-                )}
-              >
-                {isGenerating ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    <span>Generating...</span>
-                  </>
-                ) : (
-                  <>
-                    <Wand2 className="w-5 h-5" />
-                    <span>Generate Story</span>
-                  </>
-                )}
-              </button>
-            </div>
+          <div className="relative">
+            <textarea
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder="Enter a theme for your story (e.g., 'The Lost Kingdom', 'Space Odyssey', 'Ancient Dragons')..."
+              className="w-full h-32 bg-neutral-900 border border-neutral-800 rounded-2xl p-4 pr-12 text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent resize-none"
+            />
+            <button
+              onClick={handleGenerateAll}
+              disabled={isGenerating || !prompt.trim()}
+              className="absolute bottom-4 right-4 px-6 py-2 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 disabled:from-neutral-700 disabled:to-neutral-700 rounded-xl font-medium transition-all duration-200 flex items-center gap-2"
+            >
+              {isGenerating ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Wand2 className="w-4 h-4" />
+              )}
+              {isGenerating ? 'Generating...' : 'Generate Story'}
+            </button>
           </div>
           
           {error && (
             <motion.div 
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="mt-3 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm"
+              className="mt-4 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm"
             >
               {error}
             </motion.div>
           )}
         </section>
 
-        {/* Story Progress */}
+        {/* Player Section */}
         {dialogueNodes.length > 0 && (
-          <section className="mb-6">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-medium text-neutral-200">Story Sequence</h2>
-              <span className="text-sm text-neutral-400">
-                Scene {currentIndex + 1} of {dialogueNodes.length}
-              </span>
-            </div>
-            <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-neutral-700 scrollbar-track-neutral-900">
-              {dialogueNodes.map((node, idx) => (
-                <button
-                  key={node.id}
-                  onClick={() => setCurrentIndex(idx)}
-                  className={clsx(
-                    'flex-shrink-0 w-12 h-12 rounded-lg border-2 transition-all flex items-center justify-center text-xs font-medium',
-                    idx === currentIndex
-                      ? 'border-violet-500 bg-violet-500/20 text-white'
-                      : idx < currentIndex
-                      ? 'border-green-500/50 bg-green-500/10 text-green-400'
-                      : 'border-neutral-700 bg-neutral-800 text-neutral-400 hover:border-neutral-600'
-                  )}
-                >
-                  {idx + 1}
-                </button>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* Main Content */}
-        {dialogueNodes.length > 0 && currentNode && (
-          <section className="grid lg:grid-cols-2 gap-8">
-            {/* Scene Display */}
-            <div className="space-y-4">
-              <div className="relative aspect-video rounded-2xl overflow-hidden bg-neutral-900 border border-neutral-800">
-                {currentNode.status === 'loading' ? (
-                  <div className="absolute inset-0 flex items-center justify-center bg-neutral-900">
-                    <div className="flex flex-col items-center gap-3">
-                      <Loader2 className="w-8 h-8 animate-spin text-violet-500" />
-                      <span className="text-sm text-neutral-400">Generating scene...</span>
-                    </div>
+          <section className="bg-neutral-900 rounded-3xl border border-neutral-800 overflow-hidden">
+            {/* Video/Image Display */}
+            <div className="aspect-video relative bg-black">
+              {currentNode?.imageUrl ? (
+                <img 
+                  src={currentNode.imageUrl} 
+                  alt={`Scene ${currentIndex + 1}`}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="text-center">
+                    <ImageIcon className="w-16 h-16 text-neutral-700 mx-auto mb-4" />
+                    <p className="text-neutral-500">
+                      {currentNode?.status === 'loading' ? 'Generating image...' : 'No image yet'}
+                    </p>
                   </div>
-                ) : currentNode.imageUrl ? (
-                  <img 
-                    src={currentNode.imageUrl} 
-                    alt={`Scene ${currentIndex + 1}`}
-                    className="w-full h-full object-cover"
-                  />
-                ) : currentNode.status === 'error' ? (
-                  <div className="absolute inset-0 flex items-center justify-center bg-neutral-900">
-                    <div className="flex flex-col items-center gap-2 text-red-400">
-                      <ImageIcon className="w-8 h-8" />
-                      <span className="text-sm">Failed to generate</span>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="absolute inset-0 flex items-center justify-center bg-neutral-900">
-                    <ImageIcon className="w-8 h-8 text-neutral-600" />
-                  </div>
-                )}
-                
-                {/* Scene Number Badge */}
-                <div className="absolute top-3 left-3 px-3 py-1 rounded-full bg-black/60 backdrop-blur-sm text-sm font-medium">
-                  Scene {currentIndex + 1}
                 </div>
-              </div>
+              )}
               
-              {/* Playback Controls */}
-              <div className="flex items-center justify-center gap-4">
-                <button
-                  onClick={handleReset}
-                  className="p-3 rounded-full bg-neutral-800 hover:bg-neutral-700 transition-colors"
-                  title="Reset"
-                >
-                  <RotateCcw className="w-5 h-5" />
-                </button>
-                <button
-                  onClick={handlePrevious}
-                  disabled={currentIndex === 0}
-                  className="p-3 rounded-full bg-neutral-800 hover:bg-neutral-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <ChevronLeft className="w-5 h-5" />
-                </button>
-                <button
-                  onClick={handlePlayPause}
-                  className={clsx(
-                    'p-4 rounded-full transition-colors',
-                    isPlaying 
-                      ? 'bg-red-500 hover:bg-red-600' 
-                      : 'bg-violet-600 hover:bg-violet-500'
-                  )}
-                >
-                  {isPlaying ? (
-                    <Pause className="w-6 h-6" />
-                  ) : (
-                    <Play className="w-6 h-6" />
-                  )}
-                </button>
-                <button
-                  onClick={handleNext}
-                  disabled={currentIndex === dialogueNodes.length - 1}
-                  className="p-3 rounded-full bg-neutral-800 hover:bg-neutral-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <ChevronRight className="w-5 h-5" />
-                </button>
-                <button
-                  onClick={toggleMute}
-                  className="p-3 rounded-full bg-neutral-800 hover:bg-neutral-700 transition-colors"
-                  title={isMuted ? 'Unmute' : 'Mute'}
-                >
-                  {isMuted ? (
-                    <VolumeX className="w-5 h-5" />
-                  ) : (
-                    <Volume2 className="w-5 h-5" />
-                  )}
-                </button>
+              {/* Progress bar */}
+              <div className="absolute bottom-0 left-0 right-0 h-1 bg-neutral-800">
+                <motion.div 
+                  className="h-full bg-gradient-to-r from-violet-500 to-indigo-500"
+                  initial={{ width: 0 }}
+                  animate={{ width: `${progress}%` }}
+                />
+              </div>
+
+              {/* Node indicator */}
+              <div className="absolute top-4 left-4 px-3 py-1 bg-black/50 backdrop-blur-sm rounded-full text-sm text-neutral-300">
+                Scene {currentIndex + 1} / {dialogueNodes.length}
               </div>
             </div>
 
-            {/* Dialogue Panel */}
-            <div className="space-y-4">
-              <div className="p-6 rounded-2xl bg-neutral-900 border border-neutral-800 space-y-4">
-                {/* Character Name Display */}
-                <div className="flex items-center gap-3">
-                  <div className="px-3 py-1 rounded-full bg-violet-600/20 border border-violet-500/30 text-violet-300 text-sm font-medium">
-                    {currentNode.characterName}
-                  </div>
-                  <span className="text-xs text-neutral-500">
-                    Voice: {CHARACTER_VOICES[currentNode.characterName]?.voiceName || 'Default'}
+            {/* Dialogue Box */}
+            <div className="p-6">
+              <div className="flex items-start gap-4">
+                {/* Character Avatar */}
+                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-600/20 to-indigo-600/20 border border-violet-500/30 flex items-center justify-center flex-shrink-0">
+                  <span className="text-2xl">
+                    {currentNode?.characterName === 'Narrator' && '🎭'}
+                    {currentNode?.characterName === 'Seeker' && '🧭'}
+                    {currentNode?.characterName === 'Guide' && '🧙'}
+                    {currentNode?.characterName === 'Spirit' && '👻'}
+                    {currentNode?.characterName === 'Mystic' && '🔮'}
+                    {currentNode?.characterName === 'Guardian' && '🛡️'}
+                    {currentNode?.characterName === 'Challenger' && '⚔️'}
+                    {currentNode?.characterName === 'Elder' && '👴'}
+                    {currentNode?.characterName === 'Oracle' && '🌙'}
+                    {currentNode?.characterName === 'Sage' && '📜'}
+                    {currentNode?.characterName === 'Wanderer' && '🚶'}
+                    {currentNode?.characterName === 'Keeper' && '🔑'}
                   </span>
                 </div>
                 
-                <p className="text-lg leading-relaxed text-neutral-200">
-                  {currentNode.text}
-                </p>
-                
-                <div className="pt-4 border-t border-neutral-800">
-                  <p className="text-xs text-neutral-500 mb-2">Image Prompt:</p>
-                  <p className="text-sm text-neutral-400 italic">
-                    {currentNode.imagePrompt}
+                <div className="flex-1 min-w-0">
+                  {/* Character Name */}
+                  <div className="flex items-center gap-2 mb-2">
+                    <h3 className="text-lg font-semibold text-violet-400">
+                      {currentNode?.characterName}
+                    </h3>
+                    {currentNode?.status === 'loading' && (
+                      <Loader2 className="w-4 h-4 animate-spin text-violet-400" />
+                    )}
+                    {currentNode?.status === 'error' && (
+                      <span className="text-xs text-red-400">Error</span>
+                    )}
+                  </div>
+                  
+                  {/* Dialogue Text */}
+                  <p className="text-lg text-neutral-200 leading-relaxed">
+                    {currentNode?.text}
                   </p>
                 </div>
               </div>
 
-              {/* Node Status */}
-              <div className="flex items-center gap-2 text-sm">
-                <span className={clsx(
-                  'w-2 h-2 rounded-full',
-                  currentNode.status === 'ready' ? 'bg-green-500' :
-                  currentNode.status === 'loading' ? 'bg-yellow-500 animate-pulse' :
-                  currentNode.status === 'error' ? 'bg-red-500' :
-                  'bg-neutral-500'
-                )} />
-                <span className="text-neutral-400">
-                  {currentNode.status === 'ready' ? 'Ready' :
-                   currentNode.status === 'loading' ? 'Generating...' :
-                   currentNode.status === 'error' ? 'Error' :
-                   'Pending'}
-                </span>
+              {/* Controls */}
+              <div className="flex items-center justify-between mt-6 pt-6 border-t border-neutral-800">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleReset}
+                    className="p-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors"
+                    title="Reset"
+                  >
+                    <RotateCcw className="w-5 h-5" />
+                  </button>
+                  
+                  <button
+                    onClick={toggleMute}
+                    className="p-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 transition-colors"
+                    title={isMuted ? 'Unmute' : 'Mute'}
+                  >
+                    {isMuted ? (
+                      <VolumeX className="w-5 h-5" />
+                    ) : (
+                      <Volume2 className="w-5 h-5" />
+                    )}
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-4">
+                  <button
+                    onClick={handlePrevious}
+                    disabled={currentIndex === 0 || isNavigating}
+                    className="p-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <ChevronLeft className="w-5 h-5" />
+                  </button>
+                  
+                  <button
+                    onClick={handlePlayPause}
+                    disabled={isNavigating}
+                    className={clsx(
+                      "p-4 rounded-2xl transition-all duration-200 flex items-center gap-2",
+                      isPlaying 
+                        ? "bg-red-600 hover:bg-red-500" 
+                        : "bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500"
+                    )}
+                  >
+                    {isPlaying ? (
+                      <>
+                        <Pause className="w-6 h-6" />
+                        <span className="font-medium">Pause</span>
+                      </>
+                    ) : (
+                      <>
+                        <Play className="w-6 h-6" />
+                        <span className="font-medium">Play All</span>
+                      </>
+                    )}
+                  </button>
+                  
+                  <button
+                    onClick={handleNext}
+                    disabled={currentIndex === dialogueNodes.length - 1 || isNavigating}
+                    className="p-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <ChevronRight className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="w-24" /> {/* Spacer for centering */}
               </div>
             </div>
           </section>
@@ -519,17 +489,59 @@ export default function PromptToVideo() {
 
         {/* Empty State */}
         {dialogueNodes.length === 0 && !isGenerating && (
-          <div className="text-center py-20">
-            <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-neutral-900 flex items-center justify-center">
-              <Sparkles className="w-10 h-10 text-neutral-600" />
+          <div className="text-center py-16">
+            <div className="w-24 h-24 rounded-3xl bg-neutral-900 border border-neutral-800 flex items-center justify-center mx-auto mb-6">
+              <Wand2 className="w-12 h-12 text-neutral-600" />
             </div>
-            <h3 className="text-xl font-medium text-neutral-300 mb-2">
+            <h2 className="text-2xl font-bold text-neutral-300 mb-2">
               Create Your Story
-            </h3>
+            </h2>
             <p className="text-neutral-500 max-w-md mx-auto">
-              Enter a theme above and let AI generate a 10-scene animated story with consistent characters, voices, and visual theme.
+              Enter a theme above and let AI generate a complete video story with multiple scenes, characters, and narration.
             </p>
           </div>
+        )}
+
+        {/* Thumbnail Strip */}
+        {dialogueNodes.length > 1 && (
+          <section className="mt-8">
+            <h3 className="text-lg font-semibold text-neutral-300 mb-4">Story Nodes</h3>
+            <div className="flex gap-3 overflow-x-auto pb-4">
+              {dialogueNodes.map((node, idx) => (
+                <motion.button
+                  key={node.id}
+                  onClick={() => setCurrentIndex(idx)}
+                  className={clsx(
+                    "flex-shrink-0 w-32 aspect-video rounded-xl overflow-hidden border-2 transition-all",
+                    idx === currentIndex 
+                      ? "border-violet-500 ring-2 ring-violet-500/30" 
+                      : "border-neutral-800 hover:border-neutral-700"
+                  )}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  {node.imageUrl ? (
+                    <img 
+                      src={node.imageUrl} 
+                      alt={node.characterName}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-neutral-900 flex items-center justify-center">
+                      {node.status === 'loading' ? (
+                        <Loader2 className="w-6 h-6 animate-spin text-neutral-600" />
+                      ) : (
+                        <ImageIcon className="w-6 h-6 text-neutral-700" />
+                      )}
+                    </div>
+                  )}
+                  <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/80 to-transparent">
+                    <p className="text-xs font-medium text-white truncate">{node.characterName}</p>
+                  </div>
+                </motion.button>
+              ))}
+            </div>
+          </section>
         )}
       </main>
     </div>
