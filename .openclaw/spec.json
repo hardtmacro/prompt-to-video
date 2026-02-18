@@ -1,0 +1,20 @@
+{
+  "project_name": "prompt-to-video",
+  "description": "Video generation project that converts prompts to videos with intelligent script creation and character-based voice synthesis.",
+  "features": [
+    "Start playing video as soon as the first node is ready",
+    "Buffer content when video node or audio aren't available",
+    "Generate improved scripts following a story arc structure",
+    "Use different character voices matching each character instead of a single narrator voice"
+  ],
+  "is_update": false,
+  "existing_project": null,
+  "design_notes": "Video titled Vision Magnet with red cursive title font, black description text, colorful background with objects (clock, chair, table). Chat window interface below video player.",
+  "has_dynamic_features": true,
+  "stack_tags": [
+    "nextjs",
+    "tailwind",
+    "typescript",
+    "framer-motion"
+  ]
+}
