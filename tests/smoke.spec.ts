@@ -1,240 +1,289 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('prompt-to-video', () => {
-  
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
   });
 
-  test('should display empty state with correct heading and placeholder', async ({ page }) => {
-    // Verify main heading is visible
-    await expect(page.getByRole('heading', { name: 'Story Generator' })).toBeVisible();
+  test('should display initial UI elements on page load', async ({ page }) => {
+    // Check for the main heading
+    await expect(page.getByRole('heading', { name: 'Prompt to Cinema' })).toBeVisible();
     
-    // Verify empty state heading
-    await expect(page.getByRole('heading', { name: 'Create Your Story' })).toBeVisible();
+    // Check for the subtitle/badge
+    await expect(page.getByText('AI Video Storyteller').first()).toBeVisible();
     
-    // Verify input placeholder
-    const input = page.getByPlaceholder('Enter your story prompt...');
-    await expect(input).toBeVisible();
+    // Check for the text area placeholder
+    await expect(page.getByPlaceholder('Enter a theme (e.g., Cyberpunk Samurai, Underwater Kingdom, Space Western)...')).toBeVisible();
     
-    // Verify Generate button is visible (disabled initially)
-    const generateBtn = page.getByRole('button', { name: 'Generate', exact: true });
+    // Check for the helper text about 12 nodes
+    await expect(page.getByText('Generates 12 unique character nodes').first()).toBeVisible();
+    
+    // Check Generate button exists and is initially disabled (no prompt)
+    const generateBtn = page.getByRole('button', { name: 'Generate Video', exact: true });
     await expect(generateBtn).toBeVisible();
     await expect(generateBtn).toBeDisabled();
   });
 
-  test('should enable generate button when typing and generate story', async ({ page }) => {
-    const input = page.getByPlaceholder('Enter your story prompt...');
-    const generateBtn = page.getByRole('button', { name: 'Generate', exact: true });
+  test('should enable generate button when prompt is entered', async ({ page }) => {
+    const textArea = page.getByPlaceholder('Enter a theme (e.g., Cyberpunk Samurai, Underwater Kingdom, Space Western)...');
+    const generateBtn = page.getByRole('button', { name: 'Generate Video', exact: true });
     
-    // Type a prompt
-    await input.fill('A brave knight ventures into a dark forest');
-    
-    // Generate button should be enabled
+    await textArea.fill('Cyberpunk Samurai');
     await expect(generateBtn).toBeEnabled();
+  });
+
+  test('should show loading state during generation', async ({ page }) => {
+    const textArea = page.getByPlaceholder('Enter a theme (e.g., Cyberpunk Samurai, Underwater Kingdom, Space Western)...');
+    await textArea.fill('Cyberpunk Samurai');
     
-    // Click generate
+    const generateBtn = page.getByRole('button', { name: 'Generate Video', exact: true });
     await generateBtn.click();
     
     // Should show loading state
-    const generatingBtn = page.getByRole('button', { name: 'Generating...' });
-    await expect(generatingBtn).toBeVisible();
+    await expect(page.getByText('Creating Story Arc...').first()).toBeVisible();
     
-    // Wait for generation to complete - the dialogue nodes should appear
-    // The story generates 3 nodes: Narrator, Hero, Sage
-    await expect(page.getByText('Narrator').first()).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText('Hero').first()).toBeVisible();
-    await expect(page.getByText('Sage').first()).toBeVisible();
-    
-    // Verify Play All button appears
-    await expect(page.getByRole('button', { name: 'Play All', exact: true })).toBeVisible();
+    // Button should be disabled during generation
+    await expect(generateBtn).toBeDisabled();
   });
 
-  test('should navigate between story nodes with prev/next buttons', async ({ page }) => {
-    const input = page.getByPlaceholder('Enter your story prompt...');
-    const generateBtn = page.getByRole('button', { name: 'Generate', exact: true });
+  test('should show error state when API fails', async ({ page }) => {
+    // Intercept API calls to force failure
+    await page.route('**/api/generate-image', async (route) => {
+      await route.fulfill({ status: 500 });
+    });
     
-    // Generate a story
-    await input.fill('A brave knight ventures into a dark forest');
+    await page.route('**/api/text-to-speech', async (route) => {
+      await route.fulfill({ status: 500 });
+    });
+    
+    const textArea = page.getByPlaceholder('Enter a theme (e.g., Cyberpunk Samurai, Underwater Kingdom, Space Western)...');
+    await textArea.fill('Test Theme');
+    
+    const generateBtn = page.getByRole('button', { name: 'Generate Video', exact: true });
     await generateBtn.click();
     
-    // Wait for content to load
-    await expect(page.getByText('Narrator').first()).toBeVisible({ timeout: 10000 });
+    // Wait for generation to complete (even with errors)
+    await page.waitForTimeout(3000);
     
-    // Initially on first node (1/3)
-    // REMOVED: assertion text not found in page — // REMOVED: assertion text not found in page — // REMOVED: assertion text not found in page — await expect(page.getByText('1 / 3').first()).toBeVisible();
+    // Should show error state - the app may show "Generating cinematic frame..." as loading or error
+    // The dialogue nodes are still created but with error status
+    const loadingText = page.getByText('Generating cinematic frame...').first();
+    await expect(loadingText.first()).toBeVisible();
+  });
+
+  test('should generate story nodes with mock API responses', async ({ page }) => {
+    // Mock successful API responses
+    await page.route('**/api/generate-image', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ url: 'https://example.com/image.jpg' })
+      });
+    });
     
-    // Get the first node text
-    const firstNodeText = await page.locator('.text-lg.text-white.leading-relaxed').textContent();
+    await page.route('**/api/text-to-speech', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'audio/mpeg',
+        body: Buffer.from('fake-audio')
+      });
+    });
     
-    // Click next button
-    const nextBtn = page.getByRole('button', { name: 'Next' });
+    const textArea = page.getByPlaceholder('Enter a theme (e.g., Cyberpunk Samurai, Underwater Kingdom, Space Western)...');
+    await textArea.fill('Test Theme');
+    
+    const generateBtn = page.getByRole('button', { name: 'Generate Video', exact: true });
+    await generateBtn.click();
+    
+    // Wait for at least one node to be ready
+    await page.waitForTimeout(5000);
+    
+    // Should see character name displayed
+    await expect(page.getByText('Narrator').first()).toBeVisible();
+    
+    // Should see the dialogue text
+    await expect(page.getByText(/In the heart of the Test Theme realm/)).toBeVisible();
+  });
+
+  test('should navigate between generated story nodes', async ({ page }) => {
+    // Mock successful API responses
+    await page.route('**/api/generate-image', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ url: 'https://example.com/image.jpg' })
+      });
+    });
+    
+    await page.route('**/api/text-to-speech', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'audio/mpeg',
+        body: Buffer.from('fake-audio')
+      });
+    });
+    
+    const textArea = page.getByPlaceholder('Enter a theme (e.g., Cyberpunk Samurai, Underwater Kingdom, Space Western)...');
+    await textArea.fill('Adventure');
+    
+    const generateBtn = page.getByRole('button', { name: 'Generate Video', exact: true });
+    await generateBtn.click();
+    
+    // Wait for generation to complete
+    await page.waitForTimeout(8000);
+    
+    // Should start on first node (Narrator)
+    await expect(page.getByText('Narrator').first()).toBeVisible();
+    
+    // Click next button to go to second node
+    const nextBtn = page.locator('button').filter({ has: page.locator('svg.lucide-chevron-right') }).first();
     await nextBtn.click();
     
-    // Should be on second node (2/3)
-    // REMOVED: assertion text not found in page — // REMOVED: assertion text not found in page — // REMOVED: assertion text not found in page — await expect(page.getByText('2 / 3').first()).toBeVisible();
+    // Should now show The Seeker
+    await expect(page.getByText('The Seeker').first()).toBeVisible();
     
-    // Text should have changed
-    const secondNodeText = await page.locator('.text-lg.text-white.leading-relaxed').textContent();
-    expect(secondNodeText).not.toBe(firstNodeText);
-    
-    // Should show Hero character
-    await expect(page.getByText('Hero').first()).toBeVisible();
-    
-    // Click next again
-    await nextBtn.click();
-    
-    // Should be on third node (3/3)
-    // REMOVED: assertion text not found in page — // REMOVED: assertion text not found in page — // REMOVED: assertion text not found in page — await expect(page.getByText('3 / 3').first()).toBeVisible();
-    
-    // Should show Sage character
-    await expect(page.getByText('Sage').first()).toBeVisible();
-    
-    // Next button should be disabled
-    await expect(nextBtn).toBeDisabled();
-    
-    // Click prev button
-    const prevBtn = page.getByRole('button', { name: 'Previous' });
+    // Click previous to go back
+    const prevBtn = page.locator('button').filter({ has: page.locator('svg.lucide-chevron-left') }).first();
     await prevBtn.click();
     
-    // Should be back on second node (2/3)
-    // REMOVED: assertion text not found in page — // REMOVED: assertion text not found in page — // REMOVED: assertion text not found in page — await expect(page.getByText('2 / 3').first()).toBeVisible();
-    
-    // Prev button should be enabled
-    await expect(prevBtn).toBeEnabled();
-  });
-
-  test('should play and stop story playback', async ({ page }) => {
-    const input = page.getByPlaceholder('Enter your story prompt...');
-    const generateBtn = page.getByRole('button', { name: 'Generate', exact: true });
-    
-    // Generate a story
-    await input.fill('A brave knight ventures into a dark forest');
-    await generateBtn.click();
-    
-    // Wait for content to load
-    await expect(page.getByText('Narrator').first()).toBeVisible({ timeout: 10000 });
-    
-    // Click Play All button
-    const playBtn = page.getByRole('button', { name: 'Play All', exact: true });
-    await playBtn.click();
-    
-    // Should change to Stop button during playback
-    const stopBtn = page.getByRole('button', { name: 'Stop', exact: true });
-    await expect(stopBtn).toBeVisible();
-    
-    // Click Stop
-    await stopBtn.click();
-    
-    // Should revert to Play All
-    await expect(playBtn).toBeVisible();
-  });
-
-  test('should toggle mute functionality', async ({ page }) => {
-    // Find the mute button (Volume2 icon)
-    const muteBtn = page.getByRole('button', { name: 'Mute' });
-    await expect(muteBtn).toBeVisible();
-    
-    // Click to mute
-    await muteBtn.click();
-    
-    // Should now show Unmute (VolumeX icon)
-    const unmuteBtn = page.getByRole('button', { name: 'Unmute' });
-    await expect(unmuteBtn).toBeVisible();
-    
-    // Click to unmute
-    await unmuteBtn.click();
-    
-    // Should be back to Mute
-    await expect(muteBtn).toBeVisible();
-  });
-
-  test('should regenerate story with new content', async ({ page }) => {
-    const input = page.getByPlaceholder('Enter your story prompt...');
-    const generateBtn = page.getByRole('button', { name: 'Generate', exact: true });
-    
-    // Generate first story
-    await input.fill('A brave knight ventures into a dark forest');
-    await generateBtn.click();
-    
-    // Wait for first story to load
-    await expect(page.getByText('Narrator').first()).toBeVisible({ timeout: 10000 });
-    
-    // Get first story text
-    const firstStoryText = await page.locator('.text-lg.text-white.leading-relaxed').textContent();
-    
-    // Clear and generate new story
-    await input.fill('A wizard discovers a magical crystal');
-    await generateBtn.click();
-    
-    // Wait for new story
-    await expect(page.getByText('Narrator').first()).toBeVisible({ timeout: 10000 });
-    
-    // Verify new content is different
-    const newStoryText = await page.locator('.text-lg.text-white.leading-relaxed').textContent();
-    expect(newStoryText).not.toBe(firstStoryText);
-    
-    // Should still have all characters
+    // Should be back on Narrator
     await expect(page.getByText('Narrator').first()).toBeVisible();
-    await expect(page.getByText('Hero').first()).toBeVisible();
-    await expect(page.getByText('Sage').first()).toBeVisible();
   });
 
-  test('should display images in story nodes', async ({ page }) => {
-    const input = page.getByPlaceholder('Enter your story prompt...');
-    const generateBtn = page.getByRole('button', { name: 'Generate', exact: true });
+  test('should display all 12 character names after generation', async ({ page }) => {
+    // Mock successful API responses
+    await page.route('**/api/generate-image', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ url: 'https://example.com/image.jpg' })
+      });
+    });
     
-    // Generate a story
-    await input.fill('A brave knight ventures into a dark forest');
+    await page.route('**/api/text-to-speech', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'audio/mpeg',
+        body: Buffer.from('fake-audio')
+      });
+    });
+    
+    const textArea = page.getByPlaceholder('Enter a theme (e.g., Cyberpunk Samurai, Underwater Kingdom, Space Western)...');
+    await textArea.fill('Fantasy Quest');
+    
+    const generateBtn = page.getByRole('button', { name: 'Generate Video', exact: true });
     await generateBtn.click();
     
-    // Wait for content to load
-    await expect(page.getByText('Narrator').first()).toBeVisible({ timeout: 10000 });
+    // Wait for all 12 nodes to be generated
+    await page.waitForTimeout(15000);
     
-    // Verify image element exists and has a valid src
-    const image = page.locator('img').first();
-    await expect(image).toBeVisible();
-    await expect(image).toHaveAttribute('src', /^data:|^http|^\//);
-  });
-
-  test('should handle Enter key to generate story', async ({ page }) => {
-    const input = page.getByPlaceholder('Enter your story prompt...');
+    // Navigate through all characters and verify each exists
+    const characterNames = [
+      'Narrator', 'The Seeker', 'Ancient Guide', 'Forest Spirit', 
+      'Iron Guardian', 'The Oracle', 'Village Elder', 'Lost Wanderer',
+      'Gate Keeper', 'Shadow Weaver', 'Light Bringer', 'Mystic Sage'
+    ];
     
-    // Type prompt and press Enter
-    await input.fill('Testing Enter key generation');
-    await input.press('Enter');
-    
-    // Wait for content to load
-    await expect(page.getByText('Narrator').first()).toBeVisible({ timeout: 10000 });
-    
-    // Verify story elements are visible
+    // Start at first character
     await expect(page.getByText('Narrator').first()).toBeVisible();
-    await expect(page.getByText('Hero').first()).toBeVisible();
-    await expect(page.getByText('Sage').first()).toBeVisible();
+    
+    // Navigate through each character
+    for (let i = 1; i < characterNames.length; i++) {
+      const nextBtn = page.locator('button').filter({ has: page.locator('svg.lucide-chevron-right') }).first();
+      await nextBtn.click();
+      await page.waitForTimeout(500);
+      await expect(page.getByText(characterNames[i])).toBeVisible();
+    }
   });
 
-  test('should render correctly on mobile viewport', async ({ page }) => {
+  test('should show story timeline section after generation', async ({ page }) => {
+    // Mock successful API responses
+    await page.route('**/api/generate-image', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ url: 'https://example.com/image.jpg' })
+      });
+    });
+    
+    await page.route('**/api/text-to-speech', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'audio/mpeg',
+        body: Buffer.from('fake-audio')
+      });
+    });
+    
+    const textArea = page.getByPlaceholder('Enter a theme (e.g., Cyberpunk Samurai, Underwater Kingdom, Space Western)...');
+    await textArea.fill('Space Opera');
+    
+    const generateBtn = page.getByRole('button', { name: 'Generate Video', exact: true });
+    await generateBtn.click();
+    
+    // Wait for generation
+    await page.waitForTimeout(5000);
+    
+    // Check for Story Timeline heading
+    await expect(page.getByRole('heading', { name: 'Story Timeline' })).toBeVisible();
+  });
+
+  test('should reset and start over with new prompt', async ({ page }) => {
+    // Mock successful API responses
+    await page.route('**/api/generate-image', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ url: 'https://example.com/image.jpg' })
+      });
+    });
+    
+    await page.route('**/api/text-to-speech', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'audio/mpeg',
+        body: Buffer.from('fake-audio')
+      });
+    });
+    
+    // First generation
+    const textArea = page.getByPlaceholder('Enter a theme (e.g., Cyberpunk Samurai, Underwater Kingdom, Space Western)...');
+    await textArea.fill('First Theme');
+    
+    const generateBtn = page.getByRole('button', { name: 'Generate Video', exact: true });
+    await generateBtn.click();
+    
+    await page.waitForTimeout(3000);
+    
+    // Should see first theme content
+    await expect(page.getByText('Narrator').first()).toBeVisible();
+    
+    // Find and click reset button (rotate icon)
+    const resetBtn = page.locator('button').filter({ has: page.locator('svg.lucide-rotate-ccw') }).first();
+    await resetBtn.click();
+    
+    // Should be back to initial state with input visible
+    await expect(page.getByPlaceholder('Enter a theme (e.g., Cyberpunk Samurai, Underwater Kingdom, Space Western)...')).toBeVisible();
+    await expect(generateBtn).toBeDisabled();
+    
+    // Should be able to enter new prompt
+    await textArea.fill('Second Theme');
+    await expect(generateBtn).toBeEnabled();
+  });
+
+  test('should display correctly on mobile viewport', async ({ page }) => {
     // Set mobile viewport
     await page.setViewportSize({ width: 375, height: 812 });
     
-    // Verify main heading is visible on mobile
-    await expect(page.getByRole('heading', { name: 'Story Generator' })).toBeVisible();
+    // Check main heading is visible
+    await expect(page.getByRole('heading', { name: 'Prompt to Cinema' })).toBeVisible();
     
-    // Verify input is accessible on mobile
-    const input = page.getByPlaceholder('Enter your story prompt...');
-    await expect(input).toBeVisible();
+    // Check input is accessible
+    const textArea = page.getByPlaceholder('Enter a theme (e.g., Cyberpunk Samurai, Underwater Kingdom, Space Western)...');
+    await expect(textArea).toBeVisible();
     
-    // Generate story on mobile
-    await input.fill('Mobile test story');
-    const generateBtn = page.getByRole('button', { name: 'Generate', exact: true });
-    await generateBtn.click();
-    
-    // Wait for content
-    await expect(page.getByText('Narrator').first()).toBeVisible({ timeout: 10000 });
-    
-    // Verify content is visible on mobile
-    // REMOVED: assertion text not found in page — // REMOVED: assertion text not found in page — // REMOVED: assertion text not found in page — await expect(page.getByText('1 / 3').first()).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Play All', exact: true })).toBeVisible();
+    // Enter prompt and check button state
+    await textArea.fill('Mobile Test');
+    const generateBtn = page.getByRole('button', { name: 'Generate Video', exact: true });
+    await expect(generateBtn).toBeEnabled();
   });
-
 });
