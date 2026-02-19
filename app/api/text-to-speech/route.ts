@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 
 export async function POST(request: Request) {
   try {
-    const { text } = await request.json();
+    const { text, voiceId } = await request.json();
     if (!text) {
       return NextResponse.json({ error: 'Text required' }, { status: 400 });
     }
@@ -23,7 +23,7 @@ export async function POST(request: Request) {
           'Authorization': `Bearer ${apiToken}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ prompt: text }),
+        body: JSON.stringify({ prompt: text, ...(voiceId ? { lang: voiceId } : {}) }),
       }
     );
 
