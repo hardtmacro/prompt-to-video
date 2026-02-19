@@ -15,6 +15,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ fallback: true });
     }
 
+    const body: Record<string, string> = { prompt: text };
+    if (voiceId) body.lang = voiceId;
+
     const response = await fetch(
       `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/@cf/myshell-ai/melotts`,
       {
@@ -23,7 +26,7 @@ export async function POST(request: Request) {
           'Authorization': `Bearer ${apiToken}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ prompt: text, ...(voiceId ? { lang: voiceId } : {}) }),
+        body: JSON.stringify(body),
       }
     );
 

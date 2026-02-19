@@ -1,14 +1,14 @@
 {
   "project_name": "prompt-to-video",
-  "description": "Fix and verify text-to-audio generation with different character voices based on node character notes",
+  "description": "An app that generates auto-play videos from character prompts and narratives, currently being fixed to resolve auto-play video generation issues.",
   "features": [
-    "Text-to-audio generation verification",
-    "Character-specific voice assignment based on node data",
-    "Audio playback functionality check"
+    "Auto-play video generation",
+    "Character-based video creation",
+    "Narrative-driven video generation"
   ],
   "is_update": true,
   "existing_project": "Vision Magnet",
-  "design_notes": "White background with black text and vibrant graphics, video clips displayed in vertical list with thumbnails, narrator names and roles displayed below each clip, MAXROOM logo visible",
+  "design_notes": "Content features 'Vision Magnet' project with tagline 'Motivate Teams with Vision, Not Demands', includes characters Mrs. Parker and Narrator in a floating office world setting where ideas drift like balloons.",
   "has_dynamic_features": true,
   "stack_tags": [
     "nextjs",
@@ -16,5 +16,5 @@
     "typescript",
     "framer-motion"
   ],
-  "user_feedback": "I can't hear anything. Check the text to audio generation and also verify\r\nthat different character voices are used based on the character noted on\r\nthe node."
+  "user_feedback": "The app is still not generating auto play video correctly. Try redoing the\r\nentire app. may be that will fix it?"
 }
