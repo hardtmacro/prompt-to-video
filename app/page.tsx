@@ -31,6 +31,7 @@ interface Scene {
   audioUrl?: string | null;
   voiceId?: string;
   isGenerating?: boolean;
+  isReady?: boolean;
 }
 
 interface ChatMessage {
@@ -111,7 +112,8 @@ const buildStoryArcHelper = (userPrompt: string): Scene[] => {
     narration: item.narration,
     imagePrompt: generateImagePrompt(item.characterName, index, theme),
     voiceId: CHARACTER_VOICES[item.characterName] || CHARACTER_VOICES['Default'],
-    isGenerating: false
+    isGenerating: false,
+    isReady: false
   }));
 };
 
@@ -128,22 +130,26 @@ export default function PromptToVideoApp() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const scenesRef = useRef<Scene[]>([]);
+  const isAutoPlayingRef = useRef(false);
+  const playNextTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
-  // Web Speech API ref for pre-generation announcements
-  const speechSynthesisRef = useRef<SpeechSynthesis | null>(null);
-
   // Hydration fix - set to true initially to render UI immediately
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      speechSynthesisRef.current = window.speechSynthesis;
-    }
+    setHasHydrated(true);
+    audioRef.current = new Audio();
+    
     setChatMessages([{
       id: 'init',
       sender: 'system',
       text: "Ready to generate your visual story. Enter a prompt to begin.",
       timestamp: new Date().toLocaleTimeString()
     }]);
-    audioRef.current = new Audio();
+    
+    return () => {
+      if (playNextTimeoutRef.current) {
+        clearTimeout(playNextTimeoutRef.current);
+      }
+    };
   }, []);
 
   // Update scenesRef to keep track of current state in callbacks
@@ -151,79 +157,148 @@ export default function PromptToVideoApp() {
     scenesRef.current = scenes;
   }, [scenes]);
 
-  // Audio auto-play and transition logic
+  // Centralized auto-play controller
+  // This effect monitors scene readiness and handles auto-play transitions
+  useEffect(() => {
+    if (!isPlaying || scenes.length === 0) return;
+    
+    const checkAndPlayNext = () => {
+      const currentScene = scenesRef.current[currentSceneIndex];
+      
+      // If current scene is fully ready (has both audio and image), check if we should advance
+      if (currentScene?.isReady && currentScene?.audioUrl && currentScene?.imageUrl) {
+        const nextIndex = currentSceneIndex + 1;
+        
+        // If there's a next scene that's ready, play it
+        if (nextIndex < scenesRef.current.length) {
+          const nextScene = scenesRef.current[nextIndex];
+          
+          if (nextScene.isReady && nextScene.audioUrl && nextScene.imageUrl) {
+            // Small delay for smooth transition
+            playNextTimeoutRef.current = setTimeout(() => {
+              setCurrentSceneIndex(nextIndex);
+            }, 500);
+          } else {
+            // Next scene not ready yet - schedule a check
+            playNextTimeoutRef.current = setTimeout(checkAndPlayNext, 1000);
+          }
+        } else {
+          // End of story
+          setIsPlaying(false);
+        }
+      } else if (currentSceneIndex === -1 && scenesRef.current[0]?.isReady) {
+        // Haven't started yet but scene 0 is ready - start playing
+        setCurrentSceneIndex(0);
+      } else {
+        // Current scene not ready, check again soon
+        playNextTimeoutRef.current = setTimeout(checkAndPlayNext, 500);
+      }
+    };
+    
+    // Start checking
+    const timeoutId = setTimeout(checkAndPlayNext, 500);
+    
+    return () => {
+      if (playNextTimeoutRef.current) {
+        clearTimeout(playNextTimeoutRef.current);
+      }
+      clearTimeout(timeoutId);
+    };
+  }, [isPlaying, scenes.length]);
+
+  // Audio playback effect - handles scene transitions and playback
+  useEffect(() => {
+    if (!audioRef.current) return;
+    
+    const currentScene = scenes[currentSceneIndex];
+    
+    // Handle audio playback when scene changes
+    if (currentScene?.audioUrl && isPlaying) {
+      // Only play if src changed or we're not currently playing
+      if (audioRef.current.src !== currentScene.audioUrl) {
+        audioRef.current.src = currentScene.audioUrl;
+        audioRef.current.muted = isMuted;
+        
+        audioRef.current.play()
+          .then(() => {
+            console.log("Auto-playing scene", currentSceneIndex);
+          })
+          .catch(e => {
+            console.error("Playback error:", e);
+            // Try again with user interaction fallback
+          });
+      } else if (audioRef.current.paused) {
+        audioRef.current.play().catch(console.error);
+      }
+    }
+    
+    // Handle pause
+    if (!isPlaying && audioRef.current && !audioRef.current.paused) {
+      audioRef.current.pause();
+    }
+    
+    // Cleanup on unmount or when stopping
+    return () => {
+      // Don't clean up audio on every change, just manage playback state
+    };
+  }, [currentSceneIndex, isPlaying, scenes, isMuted]);
+
+  // Audio ended handler - moves to next scene
   useEffect(() => {
     if (!audioRef.current) return;
 
     const handleEnded = () => {
+      console.log("Audio ended, current scene:", currentSceneIndex);
+      
       const nextIndex = currentSceneIndex + 1;
-      if (nextIndex < scenes.length) {
-        // Only move to next if it's ready, otherwise wait for buffer
-        if (scenes[nextIndex].audioUrl && scenes[nextIndex].imageUrl) {
+      if (nextIndex < scenesRef.current.length) {
+        const nextScene = scenesRef.current[nextIndex];
+        
+        // If next scene is ready, advance immediately
+        if (nextScene.isReady && nextScene.audioUrl) {
           setCurrentSceneIndex(nextIndex);
         } else {
-          // Buffering state - stay on current index but stop playing until next is ready
-          // In this implementation, the generation loop will trigger it
+          // Wait for next scene to be ready
+          const waitForNext = () => {
+            const updatedNext = scenesRef.current[nextIndex];
+            if (updatedNext?.isReady && updatedNext?.audioUrl) {
+              setCurrentSceneIndex(nextIndex);
+            } else {
+              setTimeout(waitForNext, 500);
+            }
+          };
+          setTimeout(waitForNext, 500);
         }
       } else {
+        // End of video
         setIsPlaying(false);
+        console.log("Playback complete");
       }
     };
 
     audioRef.current.onended = handleEnded;
-    return () => {
-      if (audioRef.current) audioRef.current.onended = null;
-    };
-  }, [currentSceneIndex, scenes, isPlaying]);
-
-  // Scene transition side effect
-  useEffect(() => {
-    if (isPlaying && currentSceneIndex >= 0 && scenes[currentSceneIndex]?.audioUrl) {
-      if (audioRef.current) {
-        audioRef.current.src = scenes[currentSceneIndex].audioUrl!;
-        audioRef.current.muted = isMuted;
-        audioRef.current.play().catch(e => console.error("Playback error", e));
-      }
-    }
-  }, [currentSceneIndex, isPlaying, scenes, isMuted]);
-
-  // Pre-generation character line announcement function
-  const announceCharacterLines = useCallback(async (newScenes: Scene[]) => {
-    if (!speechSynthesisRef.current) return;
     
-    try {
-      for (const scene of newScenes) {
-        // Cancel any ongoing speech
-        speechSynthesisRef.current.cancel();
-        
-        const utterance = new SpeechSynthesisUtterance(scene.characterName + ": " + scene.dialogue);
-        
-        // Fix: Use character-specific voice selection based on CHARACTER_VOICES mapping
-        const targetVoiceId = scene.voiceId || 'af_sarah';
-        const voices = speechSynthesisRef.current.getVoices();
-        const voice = voices.find(v => v.name.includes(targetVoiceId) || v.lang === 'en-US');
-        
-        if (voice) {
-          utterance.voice = voice;
-        }
-        utterance.rate = 0.9;
-        utterance.pitch = 1.0;
-        
-        await new Promise((resolve, reject) => {
-          utterance.onend = resolve;
-          utterance.onerror = reject;
-          speechSynthesisRef.current?.speak(utterance);
-        });
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.onended = null;
       }
-    } catch (error) {
-      console.error("Error in character announcements:", error);
-    }
-  }, []);
+    };
+  }, [currentSceneIndex, scenes]);
 
   const updateScene = (index: number, updates: Partial<Scene>) => {
     setScenes(prev => {
       const newScenes = [...prev];
       newScenes[index] = { ...newScenes[index], ...updates };
+      
+      // Mark as ready if both audio and image are available
+      if (updates.audioUrl || updates.imageUrl) {
+        const scene = newScenes[index];
+        if (scene.audioUrl && scene.imageUrl && !scene.isReady) {
+          newScenes[index] = { ...scene, isReady: true };
+          console.log(`Scene ${index} is now ready!`);
+        }
+      }
+      
       return newScenes;
     });
   };
@@ -234,6 +309,12 @@ export default function PromptToVideoApp() {
     setIsGenerating(true);
     setIsPlaying(false);
     setCurrentSceneIndex(-1);
+    
+    // Reset audio
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
     
     if (abortControllerRef.current) abortControllerRef.current.abort();
     abortControllerRef.current = new AbortController();
@@ -247,10 +328,10 @@ export default function PromptToVideoApp() {
     const newScenes = buildStoryArcHelper(prompt);
     setScenes(newScenes);
 
-    // Note: Character voice lines are handled by /api/text-to-speech below
+    // Start auto-play flag
+    isAutoPlayingRef.current = true;
 
     // Sequence: For each node, generate audio FIRST, then image.
-    // Start playing as soon as scene 0 is ready.
     for (let i = 0; i < newScenes.length; i++) {
       if (signal.aborted) break;
 
@@ -273,10 +354,10 @@ export default function PromptToVideoApp() {
           const audioUrl = URL.createObjectURL(blob);
           updateScene(i, { audioUrl });
           
-          // CRITICAL: Automatically start playing when the first node's audio is ready
+          // Auto-start playback when first scene's audio is ready
           if (i === 0) {
-            setCurrentSceneIndex(0);
             setIsPlaying(true);
+            setCurrentSceneIndex(0);
           }
         }
 
@@ -291,11 +372,6 @@ export default function PromptToVideoApp() {
         if (imgRes.ok) {
           const { url } = await imgRes.json();
           updateScene(i, { imageUrl: url, isGenerating: false });
-
-          // If we were waiting for this scene to play (it's the next in line)
-          if (isPlaying && currentSceneIndex === i - 1 && audioRef.current?.paused) {
-             setCurrentSceneIndex(i);
-          }
         }
       } catch (error) {
         console.error("Generation error", error);
@@ -308,7 +384,13 @@ export default function PromptToVideoApp() {
 
   const togglePlay = () => {
     if (currentSceneIndex === -1 && scenes.length > 0) {
-      setCurrentSceneIndex(0);
+      // Find first ready scene
+      const firstReady = scenes.findIndex(s => s.isReady);
+      if (firstReady >= 0) {
+        setCurrentSceneIndex(firstReady);
+      } else {
+        setCurrentSceneIndex(0);
+      }
       setIsPlaying(true);
     } else {
       setIsPlaying(!isPlaying);
@@ -316,6 +398,15 @@ export default function PromptToVideoApp() {
         if (isPlaying) audioRef.current.pause();
         else audioRef.current.play();
       }
+    }
+  };
+
+  const handleStop = () => {
+    setIsPlaying(false);
+    setCurrentSceneIndex(-1);
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
     }
   };
 
@@ -329,10 +420,11 @@ export default function PromptToVideoApp() {
           </div>
           <h1 className="text-xl font-bold tracking-tight">Cine<span className="text-indigo-400">Story</span></h1>
         </div>
+       
         <div className="flex items-center gap-4">
           <button 
             onClick={() => setIsMuted(!isMuted)}
-            className="p-2 hover:bg-neutral-800 rounded-lg transition-colors"
+            className="p-2 rounded-lg hover:bg-neutral-800 transition-colors"
             aria-label={isMuted ? "Unmute" : "Mute"}
           >
             {isMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
@@ -340,224 +432,317 @@ export default function PromptToVideoApp() {
         </div>
       </header>
 
+      {/* Main Content */}
       <main className="flex-1 flex overflow-hidden">
-        {/* Left Panel - Story Editor */}
-        <div className="w-1/2 border-r border-neutral-800 flex flex-col">
+        {/* Left Panel - Input */}
+        <div className="w-1/3 border-r border-neutral-800 p-6 flex flex-col gap-6 overflow-y-auto bg-neutral-950">
           {/* Prompt Input */}
-          <div className="p-6 border-b border-neutral-800">
-            <label className="block text-sm font-medium text-neutral-400 mb-2">
+          <div className="space-y-3">
+            <label className="text-sm font-medium text-neutral-400 flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-indigo-400" />
               Story Prompt
             </label>
-            <div className="relative">
-              <textarea
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                disabled={isGenerating}
-                className="w-full h-24 bg-neutral-900 border border-neutral-700 rounded-xl p-4 pr-12 text-neutral-100 placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 resize-none disabled:opacity-50"
-                placeholder="Describe your story concept..."
-              />
-              <button
-                onClick={handleGenerate}
-                disabled={isGenerating}
-                className={clsx(
-                  "absolute right-3 bottom-3 p-2.5 rounded-lg transition-all",
-                  isGenerating 
-                    ? "bg-neutral-700 cursor-not-allowed" 
-                    : "bg-indigo-600 hover:bg-indigo-500"
-                )}
-              >
-                {isGenerating ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : (
-                  <Sparkles className="w-5 h-5" />
-                )}
-              </button>
-            </div>
+            <textarea
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder="Describe your story..."
+              className="w-full h-32 bg-neutral-900 border border-neutral-800 rounded-xl p-4 text-neutral-100 placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 resize-none transition-all"
+            />
           </div>
 
-          {/* Scene Timeline */}
-          <div className="flex-1 overflow-y-auto p-6">
-            <h2 className="text-sm font-medium text-neutral-400 mb-4">Story Arc</h2>
-            <div className="space-y-3">
-              {scenes.map((scene, index) => (
-                <motion.div
-                  key={scene.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
+          {/* Generate Button */}
+          <button
+            onClick={handleGenerate}
+            disabled={isGenerating || !prompt.trim()}
+            className={clsx(
+              "w-full py-4 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all",
+              isGenerating 
+                ? "bg-neutral-800 text-neutral-500 cursor-not-allowed"
+                : "bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/25 hover:shadow-indigo-600/40"
+            )}
+          >
+            {isGenerating ? (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                Generating Story...
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-5 h-5" />
+                Generate Video
+              </>
+            )}
+          </button>
+
+          {/* Playback Controls */}
+          {scenes.length > 0 && (
+            <div className="bg-neutral-900/50 rounded-xl p-4 space-y-4 border border-neutral-800">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-neutral-400">Playback</span>
+                <span className="text-xs text-neutral-500">
+                  Scene {currentSceneIndex + 1} / {scenes.length}
+                </span>
+              </div>
+              
+              <div className="flex gap-2">
+                <button
+                  onClick={togglePlay}
+                  disabled={scenes.every(s => !s.isReady)}
                   className={clsx(
-                    "p-4 rounded-xl border transition-all cursor-pointer",
-                    currentSceneIndex === index 
-                      ? "bg-indigo-500/10 border-indigo-500/50" 
-                      : "bg-neutral-900/50 border-neutral-800 hover:border-neutral-700"
+                    "flex-1 py-3 rounded-lg font-medium flex items-center justify-center gap-2 transition-all",
+                    isPlaying 
+                      ? "bg-amber-600/20 text-amber-400 border border-amber-600/30 hover:bg-amber-600/30"
+                      : "bg-emerald-600/20 text-emerald-400 border border-emerald-600/30 hover:bg-emerald-600/30",
+                    scenes.every(s => !s.isReady) && "opacity-50 cursor-not-allowed"
                   )}
-                  onClick={() => {
-                    setCurrentSceneIndex(index);
-                    if (scene.audioUrl) setIsPlaying(true);
-                  }}
                 >
-                  <div className="flex items-start justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className={clsx(
-                        "w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium",
-                        currentSceneIndex === index ? "bg-indigo-500 text-white" : "bg-neutral-800 text-neutral-400"
-                      )}>
-                        {index + 1}
-                      </span>
-                      <span className="font-medium text-neutral-200">{scene.characterName}</span>
+                  {isPlaying ? (
+                    <>
+                      <Pause className="w-4 h-4" />
+                      Pause
+                    </>
+                  ) : (
+                    <>
+                      <Play className="w-4 h-4" />
+                      {currentSceneIndex === -1 ? 'Start' : 'Resume'}
+                    </>
+                  )}
+                </button>
+                
+                <button
+                  onClick={handleStop}
+                  className="px-4 py-3 rounded-lg font-medium flex items-center justify-center gap-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 transition-all"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Scene List */}
+          {scenes.length > 0 && (
+            <div className="space-y-2">
+              <span className="text-sm font-medium text-neutral-400">Scenes</span>
+              <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
+                {scenes.map((scene, index) => (
+                  <motion.div
+                    key={scene.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.05 }}
+                    onClick={() => {
+                      if (scene.isReady) {
+                        setCurrentSceneIndex(index);
+                        setIsPlaying(true);
+                      }
+                    }}
+                    className={clsx(
+                      "p-3 rounded-lg border cursor-pointer transition-all",
+                      currentSceneIndex === index 
+                        ? "bg-indigo-600/20 border-indigo-500/50" 
+                        : scene.isReady 
+                          ? "bg-neutral-900 border-neutral-800 hover:border-neutral-700"
+                          : "bg-neutral-900/50 border-neutral-800/50 opacity-60",
+                      !scene.isReady && "cursor-wait"
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm truncate">{scene.characterName}</p>
+                        <p className="text-xs text-neutral-500 truncate">{scene.dialogue}</p>
+                      </div>
+                      
+                      <div className="flex items-center gap-1">
+                        {scene.isGenerating ? (
+                          <Loader2 className="w-3 h-3 animate-spin text-indigo-400" />
+                        ) : scene.isReady ? (
+                          <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                        ) : (
+                          <div className="w-3 h-3 rounded-full bg-neutral-700" />
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      {scene.isGenerating && <Loader2 className="w-4 h-4 animate-spin text-indigo-400" />}
-                      {scene.imageUrl && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
-                      {scene.audioUrl && <Volume2 className="w-4 h-4 text-blue-400" />}
-                    </div>
-                  </div>
-                  <p className="text-sm text-neutral-400 mb-2">"{scene.dialogue}"</p>
-                  <p className="text-xs text-neutral-500 italic">{scene.narration}</p>
-                </motion.div>
-              ))}
-              {scenes.length === 0 && (
-                <div className="text-center py-12 text-neutral-500">
-                  <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                  <p>Enter a prompt and click generate to create your story</p>
+                  </motion.div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Chat/Messages */}
+          <div className="flex-1 space-y-3 min-h-0">
+            <div className="flex items-center gap-2 text-sm font-medium text-neutral-400">
+              <MessageSquare className="w-4 h-4" />
+              Activity Log
+            </div>
+            
+            <div className="flex-1 overflow-y-auto space-y-3 max-h-[200px] pr-2">
+              {chatMessages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={clsx(
+                    "p-3 rounded-lg text-sm",
+                    msg.sender === 'system' 
+                      ? "bg-neutral-900 border border-neutral-800" 
+                      : "bg-indigo-900/20 border border-indigo-800/30 ml-4"
+                  )}
+                >
+                  <p>{msg.text}</p>
+                  <span className="text-xs text-neutral-500">{msg.timestamp}</span>
                 </div>
-              )}
+              ))}
             </div>
           </div>
         </div>
 
         {/* Right Panel - Preview */}
-        <div className="w-1/2 flex flex-col bg-neutral-950">
-          {/* Main Preview Area */}
-          <div className="flex-1 relative flex items-center justify-center p-8">
+        <div className="flex-1 bg-neutral-900 relative overflow-hidden flex flex-col">
+          {/* Video Preview Area */}
+          <div className="flex-1 relative">
             <AnimatePresence mode="wait">
-              {scenes.length > 0 && currentSceneIndex >= 0 ? (
+              {currentSceneIndex >= 0 && scenes[currentSceneIndex]?.imageUrl ? (
                 <motion.div
-                  key={currentSceneIndex}
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 1.05 }}
-                  transition={{ duration: 0.3 }}
-                  className="relative w-full aspect-video rounded-2xl overflow-hidden shadow-2xl"
+                  key={scenes[currentSceneIndex].id}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.5 }}
+                  className="absolute inset-0"
                 >
-                  {scenes[currentSceneIndex]?.imageUrl ? (
-                    <img 
-                      src={scenes[currentSceneIndex].imageUrl!} 
-                      alt={`Scene ${currentSceneIndex + 1}`}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full bg-neutral-900 flex items-center justify-center">
-                      <Loader2 className="w-12 h-12 animate-spin text-indigo-500" />
-                    </div>
-                  )}
+                  <img 
+                    src={scenes[currentSceneIndex].imageUrl!} 
+                    alt={`Scene ${currentSceneIndex + 1}`}
+                    className="w-full h-full object-contain bg-black"
+                  />
                   
                   {/* Scene Info Overlay */}
-                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent p-6 pt-20">
-                    <div className="flex items-center gap-3 mb-2">
-                      <span className="px-3 py-1 bg-indigo-600/80 rounded-full text-sm font-medium">
-                        {scenes[currentSceneIndex]?.characterName}
-                      </span>
-                      <span className="text-neutral-400 text-sm">Scene {currentSceneIndex + 1} of {scenes.length}</span>
-                    </div>
-                    <p className="text-neutral-200 text-lg mb-2">"{scenes[currentSceneIndex]?.dialogue}"</p>
-                    <p className="text-neutral-500 text-sm">{scenes[currentSceneIndex]?.narration}</p>
+                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent p-6">
+                    <motion.div
+                      initial={{ y: 20, opacity: 0 }}
+                      animate={{ y: 0, opacity: 1 }}
+                      transition={{ delay: 0.2 }}
+                    >
+                      <p className="text-indigo-400 font-medium mb-1">
+                        {scenes[currentSceneIndex].characterName}
+                      </p>
+                      <p className="text-xl text-white font-semibold mb-2">
+                        "{scenes[currentSceneIndex].dialogue}"
+                      </p>
+                      <p className="text-neutral-400 text-sm italic">
+                        {scenes[currentSceneIndex].narration}
+                      </p>
+                    </motion.div>
                   </div>
+                  
+                  {/* Playing Indicator */}
+                  {isPlaying && (
+                    <motion.div 
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      className="absolute top-4 right-4 flex items-center gap-2 bg-emerald-600/90 px-3 py-1.5 rounded-full"
+                    >
+                      <span className="w-2 h-2 bg-white rounded-full animate-pulse" />
+                      <span className="text-xs font-medium text-white">Auto-Playing</span>
+                    </motion.div>
+                  )}
                 </motion.div>
               ) : (
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  className="text-center"
+                  className="absolute inset-0 flex items-center justify-center"
                 >
-                  <div className="w-32 h-32 mx-auto mb-6 rounded-2xl bg-neutral-900 flex items-center justify-center">
-                    <Video className="w-16 h-16 text-neutral-700" />
+                  <div className="text-center space-y-4 max-w-md px-6">
+                    <div className="w-20 h-20 mx-auto rounded-2xl bg-neutral-800 flex items-center justify-center">
+                      <Video className="w-10 h-10 text-neutral-600" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-medium text-neutral-300">
+                        {isGenerating ? 'Generating Your Story...' : 'Ready to Create'}
+                      </h3>
+                      <p className="text-neutral-500 mt-2">
+                        {isGenerating 
+                          ? 'This may take a few moments as we create scenes, voiceovers, and images.'
+                          : 'Enter a prompt above and click generate to create your video story.'
+                        }
+                      </p>
+                    </div>
+                    
+                    {/* Progress indicator when generating */}
+                    {isGenerating && (
+                      <div className="flex items-center justify-center gap-1 pt-2">
+                        {scenes.map((scene, i) => (
+                          <div 
+                            key={scene.id}
+                            className={clsx(
+                              "w-2 h-2 rounded-full transition-all",
+                              scene.isReady 
+                                ? "bg-emerald-400" 
+                                : scene.isGenerating 
+                                  ? "bg-indigo-400 animate-pulse" 
+                                  : "bg-neutral-700"
+                            )}
+                          />
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  <h3 className="text-xl font-medium text-neutral-300 mb-2">Ready to Create</h3>
-                  <p className="text-neutral-500 max-w-md">
-                    Enter your story prompt and click the generate button to bring your vision to life
-                  </p>
                 </motion.div>
               )}
             </AnimatePresence>
           </div>
-
-          {/* Playback Controls */}
-          <div className="h-24 border-t border-neutral-800 flex items-center justify-center gap-4 px-6">
-            <button
-              onClick={() => {
-                setCurrentSceneIndex(Math.max(0, currentSceneIndex - 1));
-              }}
-              disabled={currentSceneIndex <= 0}
-              className="p-3 rounded-full bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              <ChevronDown className="w-5 h-5 rotate-90" />
-            </button>
-            
-            <button
-              onClick={togglePlay}
-              disabled={scenes.length === 0}
-              className={clsx(
-                "p-4 rounded-full transition-all",
-                isPlaying 
-                  ? "bg-amber-500 hover:bg-amber-400" 
-                  : "bg-indigo-600 hover:bg-indigo-500",
-                scenes.length === 0 && "opacity-50 cursor-not-allowed"
-              )}
-            >
-              {isPlaying ? (
-                <Pause className="w-8 h-8 text-white" />
-              ) : (
-                <Play className="w-8 h-8 text-white ml-1" />
-              )}
-            </button>
-            
-            <button
-              onClick={() => {
-                setCurrentSceneIndex(Math.min(scenes.length - 1, currentSceneIndex + 1));
-              }}
-              disabled={currentSceneIndex >= scenes.length - 1}
-              className="p-3 rounded-full bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              <ChevronDown className="w-5 h-5 -rotate-90" />
-            </button>
-
-            <button
-              onClick={handleGenerate}
-              disabled={isGenerating}
-              className="ml-8 px-6 py-3 bg-neutral-800 hover:bg-neutral-700 rounded-xl flex items-center gap-2 transition-colors disabled:opacity-50"
-            >
-              <RefreshCw className={clsx("w-5 h-5", isGenerating && "animate-spin")} />
-              <span>Regenerate</span>
-            </button>
-          </div>
+          
+          {/* Bottom Controls Bar */}
+          {scenes.length > 0 && (
+            <div className="h-16 border-t border-neutral-800 bg-neutral-950/80 backdrop-blur-md flex items-center px-6 gap-4">
+              {/* Progress Bar */}
+              <div className="flex-1 flex items-center gap-2">
+                <div className="flex-1 h-1.5 bg-neutral-800 rounded-full overflow-hidden">
+                  <motion.div 
+                    className="h-full bg-indigo-500"
+                    initial={{ width: 0 }}
+                    animate={{ 
+                      width: `${((currentSceneIndex + 1) / scenes.length) * 100}%` 
+                    }}
+                    transition={{ duration: 0.3 }}
+                  />
+                </div>
+                <span className="text-xs text-neutral-500 whitespace-nowrap">
+                  {scenes[currentSceneIndex]?.isReady 
+                    ? `${currentSceneIndex + 1}/${scenes.length}` 
+                    : `0/${scenes.length}`
+                  }
+                </span>
+              </div>
+              
+              {/* Quick Scene Navigation */}
+              <div className="flex items-center gap-1">
+                {scenes.slice(0, 10).map((scene, i) => (
+                  <button
+                    key={scene.id}
+                    onClick={() => {
+                      if (scene.isReady) {
+                        setCurrentSceneIndex(i);
+                        setIsPlaying(false);
+                      }
+                    }}
+                    disabled={!scene.isReady}
+                    className={clsx(
+                      "w-2 h-2 rounded-full transition-all",
+                      currentSceneIndex === i 
+                        ? "bg-indigo-400" 
+                        : scene.isReady 
+                          ? "bg-neutral-600 hover:bg-neutral-500" 
+                          : "bg-neutral-800",
+                      !scene.isReady && "cursor-not-allowed"
+                    )}
+                    title={`Scene ${i + 1}: ${scene.characterName}`}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </main>
-
-      {/* Chat Panel (Optional - bottom right) */}
-      {chatMessages.length > 0 && (
-        <div className="fixed bottom-6 right-6 w-80 bg-neutral-900/95 backdrop-blur-md border border-neutral-800 rounded-2xl shadow-2xl overflow-hidden">
-          <div className="p-4 border-b border-neutral-800 flex items-center gap-2">
-            <MessageSquare className="w-5 h-5 text-indigo-400" />
-            <h3 className="font-medium">Story Assistant</h3>
-          </div>
-          <div className="max-h-64 overflow-y-auto p-4 space-y-3">
-            {chatMessages.map((msg) => (
-              <div
-                key={msg.id}
-                className={clsx(
-                  "text-sm",
-                  msg.sender === 'system' ? "text-neutral-400" : "text-neutral-200"
-                )}
-              >
-                {msg.sender === 'system' && (
-                  <span className="text-xs text-indigo-400 block mb-1">Assistant • {msg.timestamp}</span>
-                )}
-                {msg.text}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
