@@ -358,7 +358,7 @@ export default function PromptToVideoApp() {
         updateScene(i, { audioUrl });
 
         // 2. Generate Image
-        const imgRes = await fetch('/api/image-generation', {
+        const imgRes = await fetch('/api/generate-image', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -613,7 +613,7 @@ export default function PromptToVideoApp() {
                     setCurrentSceneIndex(index);
                     if (!isPlaying) setIsPlaying(true);
                   }}
-                  className={`relative group rounded-xl overflow-hidden border transition-all ${
+                  className={`scene-card relative group rounded-xl overflow-hidden border transition-all ${
                     currentSceneIndex === index
                       ? 'ring-2 ring-indigo-500 shadow-lg'
                       : 'hover:shadow-md border-gray-200'
