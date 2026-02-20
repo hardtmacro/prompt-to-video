@@ -1,14 +1,14 @@
 {
   "project_name": "prompt-to-video",
-  "description": "An app that generates auto-play videos from character prompts and narratives, currently being fixed to resolve auto-play video generation issues.",
+  "description": "Fix and update the prompt to video functionality on the Vision Magnet project",
   "features": [
-    "Auto-play video generation",
-    "Character-based video creation",
-    "Narrative-driven video generation"
+    "Video generation from prompts",
+    "Integration with Vercel for deployment",
+    "Fix issues identified in Vercel logs"
   ],
   "is_update": true,
   "existing_project": "Vision Magnet",
-  "design_notes": "Content features 'Vision Magnet' project with tagline 'Motivate Teams with Vision, Not Demands', includes characters Mrs. Parker and Narrator in a floating office world setting where ideas drift like balloons.",
+  "design_notes": "Project page shows purple checkmark indicating open status, purple theme for MAXROOM platform",
   "has_dynamic_features": true,
   "stack_tags": [
     "nextjs",
@@ -16,5 +16,5 @@
     "typescript",
     "framer-motion"
   ],
-  "user_feedback": "The app is still not generating auto play video correctly. Try redoing the\r\nentire app. may be that will fix it?"
+  "user_feedback": "Check vercel logs to see the issues i faced"
 }
