@@ -619,7 +619,7 @@ export default function PromptToVideoApp() {
                       }}
                       disabled={!scene.isReady}
                       className={clsx(
-                        "flex-shrink-0 w-24 h-16 rounded-lg overflow-hidden border-2 transition-all",
+                        "scene-card flex-shrink-0 w-24 h-16 rounded-lg overflow-hidden border-2 transition-all",
                         idx === currentSceneIndex
                           ? "border-purple-500"
                           : scene.isReady

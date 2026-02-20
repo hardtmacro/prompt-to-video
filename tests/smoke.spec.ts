@@ -50,8 +50,10 @@ test.describe('prompt-to-video', () => {
   });
 
   test('should display scene timeline section after generation', async ({ page }) => {
-    await expect(page.getByText('Vision Magnet').first()).toBeVisible({ timeout: 10000 });
-    
+    // Generate story first — Scene Timeline only renders when scenes.length > 0
+    await page.getByRole('button', { name: 'Generate Story', exact: true }).click();
+    await page.waitForSelector('.scene-card', { timeout: 15000 });
+
     // Check Scene Timeline heading exists
     const sceneTimelineHeading = page.getByRole('heading', { name: 'Scene Timeline' });
     await expect(sceneTimelineHeading).toBeVisible();
